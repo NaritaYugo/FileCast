@@ -13,7 +13,6 @@ def check_categories(categories: dict) -> bool:
     for group_name, group_dict in categories.items():
         if not any(key != "REQ" for key in group_dict):
             raise KeyError(f"グループ「{group_name}」内にカテゴリがありません")
-            
     return True
 
 # ルール内にあるカテゴリがユーザー定義のカテゴリにあるか確認するため、categoryも渡す

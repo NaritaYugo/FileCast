@@ -74,6 +74,9 @@ class EditCategoriesDialog(QDialog):
         try:
             parsed_data = yaml.safe_load(content)
             validations.check_categories(parsed_data)
+        except yaml.scanner.ScannerError:
+            QMessageBox.critical(self, "エラー", "yaml形式が正しくありません。\nインデントが正しいか、コロンの後にスペースが入っているかを確認してください。") 
+            return
         except Exception as e:
             QMessageBox.critical(self, "エラー", e)  
             return
