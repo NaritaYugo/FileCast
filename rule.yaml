@@ -2,7 +2,7 @@
   remove_internal_delimiter: true
 - format: YY-MM-DD
   kind: DATE
-- kind: GameKINDSEPARATORVFX
+- kind: Game_KINDSEPARATOR_VFX
   requirement: []
   target:
   - effect

@@ -34,8 +34,7 @@ def check_rule(rule: list, categories: dict) -> bool:
                 raise KeyError("VERSION: バージョン形式に使える文字は「n」「.」のみです")
             
         else:
-            group = element.get("kind").split(texts.kind_separator)[0]
-            category = element.get("kind").split(texts.kind_separator)[1]
+            group, category = element.get("kind").split(texts.kind_separator)
 
             if category not in categories.get(group):
                 raise KeyError(f"キー「{element.get("kind")}」がカテゴリに存在しません")
@@ -146,15 +145,12 @@ def verify_comply_rule(filename: str, rule: list, settings: dict, categories: di
             pattern_list.append(ver_pattern)
             
         else:
-            group = element.get("kind").split(texts.kind_separator)[0]
-            category = element.get("kind").split(texts.kind_separator)[1]
+            group, category = element.get("kind").split(texts.kind_separator)
 
-            cat_pattern = r"|".join(categories.get(group).get(category))
-            pattern_list.append(cat_pattern)
+            cat_pattern = categories.get(group).get(category).replace(" ", "").replace(",", "|")
+            pattern_list.append(f"({cat_pattern})")
     
-    pattern = settings.get("delimiter").join(pattern_list) + r"\.\w+"
+    suffix_pattern = r"\.\w+"
+    pattern = settings.get("delimiter").join(pattern_list) + suffix_pattern
 
-    if re.fullmatch(pattern, filename):
-        return True
-    else:
-        return False
+    return bool(re.fullmatch(pattern, filename))
