@@ -18,8 +18,8 @@ class RenameContext:
     org_file: str
     remains: str
     extracts: list
-    has_error = False
-    has_warn = False
+    has_error: bool = False
+    has_warn: bool = False
 
 def _extract_dates(ctx: RenameContext):
     date_pos = []
@@ -52,7 +52,7 @@ def _extract_dates(ctx: RenameContext):
             org_date["year4"] = match.group("year")
         org_date["month"] = match.group("month")
         org_date["day"] = match.group("day")
-        ctx.remains = ctx.remains.replace(match.group(0), "", 1)
+        ctx.remains = ctx.remains[:match.start()] + ctx.remains[match.end():]
 
     if not date_pos: 
         return
@@ -89,11 +89,11 @@ def _extract_categories(ctx: RenameContext):
         if match:
             category = ctx.rule[i].get("kind").split(texts.kind_separator)[1]
             org_cat[category] = match.group(0)
-            ctx.remains = ctx.remains.replace(match.group(0), "", 1)
+            ctx.remains = ctx.remains[:match.start()] + ctx.remains[match.end():]
 
     # requirementを満たすものだけ置き換え
     for i in cat_pos:
-        requiremnts = ctx.rule[i].get("requiremnt")
+        requiremnts = ctx.rule[i].get("requirement")
         is_valid_cat = False
         if requiremnts:
             for req in requiremnts:
@@ -216,7 +216,7 @@ def _extract_names(ctx: RenameContext):
             name = re.sub(RE_DELIM, "", ctx.remains)
         else:
             # 内部区切りを削除しない場合でも、delimiterが複数連続しているなら1つにする
-            name = re.sub(delimiter + r"{2,}", delimiter, ctx.remains, delimiter)
+            name = re.sub(delimiter + r"{2,}", delimiter, ctx.remains)
 
         if name:
             ctx.extracts[i] = name
