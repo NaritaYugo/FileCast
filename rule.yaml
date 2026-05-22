@@ -1,0 +1,16 @@
+- kind: NAME
+  remove_internal_delimiter: true
+- format: YY-MM-DD
+  kind: DATE
+- kind: TestKINDSEPARATORtest
+  requirement: []
+  target:
+  - test
+- kind: Test2KINDSEPARATORtest2
+  requirement: []
+  target:
+  - test2
+- kind: test3KINDSEPARATORtest
+  requirement: []
+  target:
+  - test
