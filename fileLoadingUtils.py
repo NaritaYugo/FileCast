@@ -6,25 +6,41 @@ import yaml
 import validations
 import texts
 
+
+class FlowStyleList(list):
+    pass
+
+def flow_style_list_representer(dumper, data):
+    """categoriesで、Dict[str, Dict[str, list]]の内側の[str, list]だけを一行にまとめる"""
+    return dumper.represent_sequence(
+        'tag:yaml.org,2002:seq',
+        data,
+        flow_style = True
+    )
+
+
 def get_base_dir() -> Path:
     if getattr(sys, 'frozen', False):
         return Path(sys.executable).parent
     return Path(__file__).parent
 
-def load_categories(parent) -> dict:
+
+def load_categories(parent) -> tuple[dict, str]:
+    """カテゴリを読み込み、dict形式にしたものと、そのままのyamlテキストを返す"""
     categories_path = get_base_dir() / "categories.yaml"
 
     # ファイルが無ければ黙って新規作成
     if not categories_path:
         with open(categories_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(texts.DEFAULT_YAMLS["categories"], f, default_flow_style=False, allow_unicode=True)
-        return texts.DEFAULT_YAMLS["categories"]
+            yaml.dump(texts.DEFAULT_YAMLS["categories"], f, sort_keys=False, allow_unicode=True)
+        return texts.DEFAULT_YAMLS["categories"], yaml.dump(texts.DEFAULT_YAMLS["categories"], sort_keys=False, allow_unicode=True)
     
     try:
         with open(categories_path, "r", encoding="utf-8") as f:
+            raw_texts = f.read()
             categories = yaml.safe_load(f)
         validations.check_categories(categories)
-        return categories
+        return categories, raw_texts
     
     # ファイルがあるが読み込めない場合・内容が正しくない場合は確認してから初期化
     except Exception as e:
@@ -36,10 +52,11 @@ def load_categories(parent) -> dict:
 
         if reply == QMessageBox.StandardButton.Yes:
             with open(categories_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(texts.DEFAULT_YAMLS["categories"], f, default_flow_style=False, allow_unicode=True)
-            return texts.DEFAULT_YAMLS["categories"]
+                yaml.dump(texts.DEFAULT_YAMLS["categories"], f, sort_keys=False, allow_unicode=True)
+            return texts.DEFAULT_YAMLS["categories"], yaml.dump(texts.DEFAULT_YAMLS["categories"], sort_keys=False, allow_unicode=True)
         
     return None
+
 
 def load_settings(parent) -> dict:
     settings_path = get_base_dir() / "settings.yaml"
@@ -67,6 +84,7 @@ def load_settings(parent) -> dict:
                 yaml.safe_dump(texts.DEFAULT_YAMLS["settings"], f, default_flow_style=False, allow_unicode=True)
             return texts.DEFAULT_YAMLS["settings"]
     return None
+
 
 def load_rules(parent) -> dict:
     """rules のバリデーションに categories を使うので、load_categoriesを先に呼んでおく"""

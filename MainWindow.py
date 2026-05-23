@@ -146,7 +146,7 @@ class MainWindow(QMainWindow):
 
     def _ensure_yamls_exsist(self):
         """yamlファイルが無ければ新規作成する"""
-        self._categories = fileLoadingUtils.load_categories(self)
+        self._categories, _ = fileLoadingUtils.load_categories(self)
         self._rules = fileLoadingUtils.load_rules(self)
         self._settings = fileLoadingUtils.load_settings(self)
         self._file_caches = fileLoadingUtils.load_caches(self)

@@ -1,6 +1,7 @@
 import datetime
 import re
 
+import fileLoadingUtils
 import texts
 
 
@@ -12,11 +13,51 @@ def check_categories(categories: dict) -> bool:
 
     for group_name, group_dict in categories.items():
         if not isinstance(group_dict, dict):
-            raise KeyError(f"グループ「{group_name}」が辞書形式ではありません。コロンの後にスペースが挿入されているか確認してください。")
+            raise KeyError(f"グループ「{group_name}」が辞書形式ではありません")
         if not any(key != "REQ" for key in group_dict):
             raise KeyError(f"グループ「{group_name}」内にカテゴリがありません")
+        for cat_name, cat_list in group_dict.items():
+            if not isinstance(cat_list, list):
+                raise KeyError(f"カテゴリ「{group_name}-{cat_name}」がリスト形式ではありません")
     return True
 
+
+def convert_to_valid_categories(categories: dict) -> dict:
+    if categories is None:
+        return True
+    
+    if not isinstance(categories, dict):
+        raise TypeError(f"辞書形式ではありません。")
+
+    for i, (group_name, group_dict) in enumerate(categories.items()):
+        if isinstance(group_dict, dict):
+            pass
+
+        # コロンはあって、スペースが抜けているだけの場合は修正する
+        elif isinstance(group_dict, str) and group_dict.count(":") == 1:
+            categories_list = list(categories)
+            categories_list[i] = (group_dict.split())
+            categories = dict(categories_list)
+        
+        else:
+            raise TypeError(f"グループ「{group_name}」が辞書形式ではありません。")
+
+    # 更新されたcategoriesを再度回して、中の確認
+    for group_name, group_dict in categories.items():
+        if not any(key != "REQ" for key in group_dict):
+            raise KeyError(f"グループ「{group_name}」内にカテゴリがありません")
+        
+        # 改行位置を調節して書き込むため、listを継承したFlowStyleList型にする
+        for cat_name, cat_list in group_dict.items():
+            if isinstance(cat_list, list):
+                categories[group_name][cat_name] = fileLoadingUtils.FlowStyleList(cat_list)
+            elif isinstance(cat_list, str):
+                categories[group_name][cat_name] = fileLoadingUtils.FlowStyleList(
+                    cat_list.replace(" ","").split(","))
+            else:
+                raise TypeError(f"{group_name}-{cat_name}: カンマ区切り文字列またはリストとして記述してください")
+
+    return categories
 
 def check_rules(rules: list, categories: dict) -> bool:
     # ルール内にあるカテゴリがユーザー定義のカテゴリにあるか確認するため、categoryも渡す
@@ -40,7 +81,7 @@ def check_rules(rules: list, categories: dict) -> bool:
             group, category = element.get("kind").split(texts.kind_separator)
 
             if category not in categories.get(group):
-                raise KeyError(f"キー「{element.get("kind")}」がカテゴリに存在しません")
+                raise KeyError(f"キー「{category}」がカテゴリに存在しません")
 
     return True
 
@@ -155,11 +196,7 @@ def verify_comply_rules(filename: str, rules: list, settings: dict, categories: 
             group, category = element.get("kind").split(texts.kind_separator)
 
             target_cat = categories.get(group).get(category)
-            if isinstance(target_cat, list):
-                cat_pattern = "|".join(target_cat)
-            elif isinstance(target_cat, str):
-                cat_pattern = target_cat.replace(" ","").replace(",", "|")
-
+            cat_pattern = "|".join(target_cat)
             pattern_list.append(f"({cat_pattern})")
     
     suffix_pattern = r"\.\w+"

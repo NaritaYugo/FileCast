@@ -11,9 +11,6 @@ import validations
 
 
 class EditSettingsDialog(QDialog):
-    # 設定が保存されたことを親ウィンドウに通知するためのシグナル
-    settings_updated = Signal()
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("全体設定")
@@ -114,8 +111,6 @@ class EditSettingsDialog(QDialog):
             with open(self.yaml_settings_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(settings, f, default_flow_style=False, allow_unicode=True)
             
-            # 親画面に設定が変わったことを通知
-            self.settings_updated.emit()
             self.accept()
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"保存に失敗しました:\n{e}")

@@ -84,11 +84,7 @@ def _extract_categories(ctx: RenameContext):
     org_cat = {}
     for i in cat_pos:
         target_cat = ctx.rules[i].get("target")
-        if isinstance(target_cat, list):
-            re_cat = "|".join(target_cat)
-
-        elif isinstance(target_cat, str):
-            re_cat = target_cat.replace(" ","").replace(",", "|")
+        re_cat = "|".join(target_cat)
 
         match = re.search(re_cat, ctx.remains)
         if match:

@@ -1,17 +1,7 @@
 Fruits:
-  REQ: fruits
-  sour: lemon, lime
-  sweet: apple, grape
+  REQ: [fruits]
+  sweet: [apple, grape]
+  sour: [lemon]
 Game:
-  REQ: _
-  VFX:
-  - effect
-  - vfx
-  - fx
-  - efx
-test:
-  test: test
-test2:
-  test: test
-test3:
-  test: test
+  REQ: [_]
+  VFX: [effect, vfx, fx, efx]

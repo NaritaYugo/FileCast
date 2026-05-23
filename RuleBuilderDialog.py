@@ -114,22 +114,17 @@ class RuleBuilderDialog(QDialog):
         base_dir = fileLoadingUtils.get_base_dir()
         self._rules_path = base_dir / "rules.yaml"
 
-        self._categories = fileLoadingUtils.load_categories(self)
+        self._categories, _ = fileLoadingUtils.load_categories(self)
 
         self._setup_ui()
-        self._spread_rules()
-        self._setup_palette()
-        self._call_make_sample()
 
         self.settings_dialog = EditSettingsDialog.EditSettingsDialog(self)
-        self.settings_dialog.settings_updated.connect(self._call_make_sample)
-
         self.categories_dialog = EditCategoriesDialog.EditCategoriesDialog(self)
-        self.categories_dialog.categories_updated.connect(self._on_categories_file_updated)
 
     def showEvent(self, event):
-        """ダイアログが画面に表示された瞬間にサンプルのサイズを再計算する"""
         super().showEvent(event)
+        self._spread_rules()
+        self._setup_palette()
         self._call_make_sample()
 
     def _setup_ui(self):
@@ -216,12 +211,12 @@ class RuleBuilderDialog(QDialog):
         bottom_layout = QHBoxLayout()
         
         settings_btn = QPushButton("全体設定")
-        settings_btn.clicked.connect(lambda: self.settings_dialog.exec())
+        settings_btn.clicked.connect(self._on_settings_btn_clicked)
         bottom_layout.addWidget(settings_btn)
 
-        category_editor_btn = QPushButton("カテゴリの編集")
-        category_editor_btn.clicked.connect(lambda: self.categories_dialog.exec())
-        bottom_layout.addWidget(category_editor_btn)
+        category_btn = QPushButton("カテゴリの編集")
+        category_btn.clicked.connect(self._on_category_btn_clicked)
+        bottom_layout.addWidget(category_btn)
         
         bottom_layout.addStretch()
 
@@ -237,6 +232,8 @@ class RuleBuilderDialog(QDialog):
     def _setup_palette(self):
         """素材パレットの表示を更新 (グループ名のみを表示)"""
         self._palette_list.clear()
+        if not self._categories:
+            return
         
         kinds = ["VERSION", "DATE", "NAME"]
         kinds.extend(sorted(self._categories.keys()))
@@ -250,6 +247,49 @@ class RuleBuilderDialog(QDialog):
             else:
                 block.setBackground(Qt.GlobalColor.darkGreen)
             self._palette_list.addItem(block)
+
+    def _sync_tmp_rules(self):
+        """最新のカテゴリ定義(self._categories)を元に、一時退避中のブロック群を精査・更新する"""
+
+        synced_blocks = []
+        for element in self._rules_tmp_blocks:
+            kind = element.get("kind", "")
+            
+            if texts.kind_separator in kind:
+                group_name, current_target = kind.split(texts.kind_separator, 1)
+                
+                # グループ自体が消滅していたら、このブロックは破棄
+                if group_name not in self._categories:
+                    continue
+                
+                group = self._categories[group_name]
+                categories = [c for c in group.keys() if c != "REQ"]
+                
+                if current_target not in categories:
+                    if categories:
+                        # 他に利用可能なターゲットがあれば、先頭のものに切り替える
+                        current_target = categories[0]
+                    else:
+                        continue
+                
+                # 中身をデータ同期
+                element["kind"] = group_name + texts.kind_separator + current_target
+                
+                requirement_str = group.get("REQ", "_")
+                if requirement_str == "_":
+                    element["requirement"] = []
+                else: 
+                    element["requirement"] = [r.strip() for r in str(requirement_str).split(",") if r.strip()]
+                
+                target_elements = group.get(current_target, "")
+                if isinstance(target_elements, list):
+                    element["target"] = target_elements
+                else:
+                    element["target"] = [t.strip() for t in str(target_elements).split(",") if t.strip()]
+            
+            synced_blocks.append(element)
+            
+        self._rules_tmp_blocks = synced_blocks
 
     def _spread_rules(self):
         """rules.yamlから現在の配置ルールをロードして画面に並べる"""
@@ -271,11 +311,24 @@ class RuleBuilderDialog(QDialog):
 
         self._refresh_list_widgets()
 
-    def _on_categories_file_updated(self):
-        self._categories = fileLoadingUtils.load_categories(self)
-        self._spread_rules
-        self._setup_palette()
-        self._call_make_sample()
+    def _spread_tmp_rules(self):
+        """カテゴリファイルが変わった時に現在配置されているブロックをチェック・同期する"""
+        self._block_list.clear()
+
+        for element in self._rules_tmp_blocks:
+            kind = element.get("kind", "")
+            
+            # ユーザー定義カテゴリの場合、UI用の補助プロパティを復元する
+            if texts.kind_separator in kind:
+                group_name, target = kind.split(texts.kind_separator, 1)
+                element["_group"] = group_name
+                element["_selected_target"] = target
+            
+            # Blockを生成
+            block = RuleBlock(element)
+            self._block_list.addItem(block)
+
+        self._refresh_list_widgets()
 
     def _on_block_dropped(self, kind, row):
         default_elements = {
@@ -411,6 +464,37 @@ class RuleBuilderDialog(QDialog):
             
         self._call_make_sample()
 
+    def _on_category_btn_clicked(self):
+        # 現在の情報を保存
+        self._rules_tmp_blocks = self._get_current_rules()
+        selected_row = self._block_list.currentRow()
+
+        # 戻ってきたときに同期、復元
+        if self.categories_dialog.exec() == QDialog.Accepted:
+            self._categories, _ = fileLoadingUtils.load_categories(self)
+            self._sync_tmp_rules()
+            self._spread_tmp_rules()
+            self._setup_palette()
+
+            if selected_row >= 0 and selected_row < self._block_list.count():
+                self._block_list.setCurrentRow(selected_row)
+                
+            self._call_make_sample()
+
+            self._rules_tmp_blocks = []
+
+    def _on_settings_btn_clicked(self):
+        self._rules_tmp_blocks = self._get_current_rules()
+        selected_row = self._block_list.currentRow()
+        if self.settings_dialog.exec() == QDialog.Accepted:
+            self._sync_tmp_rules()
+            self._call_make_sample()
+
+            if selected_row >= 0 and selected_row < self._block_list.count():
+                self._block_list.setCurrentRow(selected_row)
+
+            self._rules_tmp_blocks = []
+
     def _adjust_sample_font_size(self, text):
         """テキストがラベルの横幅に1行で収まるようにフォントサイズを動的に調節する"""
         from PySide6.QtGui import QFont, QFontMetrics
@@ -419,11 +503,11 @@ class RuleBuilderDialog(QDialog):
         min_size = 3
         
         font = QFont()
-        font.setBold(True) # styles.py の font-weight: bold に合わせる
+        font.setBold(True)
         
-        available_width = self._sample_label.width() - 16
+        available_width = self._sample_label.width()
         if available_width <= 0:
-            available_width = 300 # 初期化前などのフォールバック
+            available_width = 300
             
         plain_text = re.sub(r'<[^>]*>', '', text)
 

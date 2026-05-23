@@ -1,8 +1,9 @@
+import re
 import yaml
 
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QMessageBox, QPlainTextEdit, QPushButton,QVBoxLayout
 from PySide6.QtGui import QFont
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 
 import fileLoadingUtils
 import texts
@@ -23,9 +24,6 @@ class YamlEditor(QPlainTextEdit):
         super().keyPressEvent(event)
 
 class EditCategoriesDialog(QDialog):
-    # カテゴリが保存されたことを親ウィンドウに通知するためのシグナル
-    categories_updated = Signal()
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("カテゴリの編集 (YAML)")
@@ -35,10 +33,14 @@ class EditCategoriesDialog(QDialog):
         self._categories_path = fileLoadingUtils.get_base_dir() / "categories.yaml"
 
         self._setup_ui()
-        self._categories = fileLoadingUtils.load_categories(self)
-        self._edit_categories.setPlainText(
-            yaml.safe_dump(self._categories, default_flow_style=False, allow_unicode=True)
-            )
+    
+    def showEvent(self, arg__1):
+        super().showEvent(arg__1)
+        _, _category_plane_text = fileLoadingUtils.load_categories(self)
+        # [] の削除と、グループごとに空行を挟む
+        cleaned_text = _category_plane_text.replace("[", "").replace("]", "")
+        display_text = re.sub(r"\n(?=\S+:)", r"\n\n", cleaned_text)
+        self._edit_categories.setPlainText(display_text)
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -72,11 +74,11 @@ class EditCategoriesDialog(QDialog):
 
     def save_categories(self):
         """エディタの内容をバリデーションした上でYAMLファイルへ保存する"""
-        content = self._edit_categories.toPlainText()
+        cat_text = self._edit_categories.toPlainText()
         
         try:
-            parsed_data = yaml.safe_load(content)
-            validations.check_categories(parsed_data)
+            cat_dict = yaml.safe_load(cat_text)
+            valid_cat_dict = validations.convert_to_valid_categories(cat_dict)
         except yaml.scanner.ScannerError:
             QMessageBox.critical(self, "エラー", "yaml形式が正しくありません。\
                 \nインデントが正しいか、コロンの後にスペースが入っているかを確認してください。") 
@@ -85,10 +87,11 @@ class EditCategoriesDialog(QDialog):
             QMessageBox.critical(self, "エラー", f"{e}")  
             return
         
+        yaml.add_representer(fileLoadingUtils.FlowStyleList, fileLoadingUtils.flow_style_list_representer)
+
         try:
             with open(self._categories_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            self.categories_updated.emit()
+                yaml.dump(valid_cat_dict, f, sort_keys=False, allow_unicode=True)
             self.accept()
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"ファイルの保存に失敗しました:\n{e}")
