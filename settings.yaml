@@ -1,5 +1,0 @@
-delimiter: _
-original_date_format: YMD
-sequence:
-  format: (n)
-  style: all_overlaps

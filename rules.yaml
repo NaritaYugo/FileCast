@@ -1,4 +1,0 @@
-- kind: NAME
-  remove_internal_delimiter: true
-- format: YY-MM-DD
-  kind: DATE

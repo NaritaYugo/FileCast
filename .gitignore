@@ -1,4 +1,3 @@
-# --- Pythonの一時キャッシュ・ビルド成果物 ---
 __pycache__/
 *.pyc
 *.pyo
@@ -19,34 +18,6 @@ wheels/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
-*.egg
-MANIFEST
-
-# --- 仮想環境 (Virtual Environments) ---
-.venv/
-venv/
-ENV/
-env/
-
-# --- 環境変数・機密情報 ---
-.env
-.env.local
-
-# --- 開発ツール・Linter・テスト用のキャッシュ ---
-.pytest_cache/
-.tox/
-.nox/
-.coverage
-.htmlcov/
-.directory
-.mypy_cache/
-.ruff_cache/
-.ipynb_checkpoints/
-
-# --- エディタ・IDE設定 (VS Code / PyCharmなど) ---
+*.eggs
 .vscode/
-.idea/
-
-# --- OS独自の一時ファイル ---
-.DS_Store
-Thumbs.db
+*.yaml
