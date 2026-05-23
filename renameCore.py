@@ -13,7 +13,7 @@ RE_DELIM = r"(_|-|\.| |^|$)"
 
 @dataclass
 class RenameContext:
-    rule: list
+    rules: list
     settings: dict
     org_file: str
     remains: str
@@ -23,7 +23,7 @@ class RenameContext:
 
 def _extract_dates(ctx: RenameContext):
     date_pos = []
-    for i, element in enumerate(ctx.rule):
+    for i, element in enumerate(ctx.rules):
         if element["kind"] == "DATE":
             date_pos.append(i)
     
@@ -58,7 +58,7 @@ def _extract_dates(ctx: RenameContext):
         return
     
     for i in date_pos:
-        new_format = ctx.rule[i].get("format")
+        new_format = ctx.rules[i].get("format")
 
         try:
             new_format = re.sub(r"YYYY", org_date["year4"], new_format)
@@ -73,7 +73,7 @@ def _extract_dates(ctx: RenameContext):
 
 def _extract_categories(ctx: RenameContext):
     cat_pos = []
-    for i, element in enumerate(ctx.rule):
+    for i, element in enumerate(ctx.rules):
         if element["kind"] not in ["DATE", "VERSION", "NAME"]:
             cat_pos.append(i)
     
@@ -83,17 +83,22 @@ def _extract_categories(ctx: RenameContext):
     # requirementに関わらずすべて抜き出す
     org_cat = {}
     for i in cat_pos:
-        re_cat = "|".join(ctx.rule[i].get("target"))
+        target_cat = ctx.rules[i].get("target")
+        if isinstance(target_cat, list):
+            re_cat = "|".join(target_cat)
+
+        elif isinstance(target_cat, str):
+            re_cat = target_cat.replace(" ","").replace(",", "|")
 
         match = re.search(re_cat, ctx.remains)
         if match:
-            category = ctx.rule[i].get("kind").split(texts.kind_separator)[1]
+            category = ctx.rules[i].get("kind").split(texts.kind_separator)[1]
             org_cat[category] = match.group(0)
             ctx.remains = ctx.remains[:match.start()] + ctx.remains[match.end():]
 
     # requirementを満たすものだけ置き換え
     for i in cat_pos:
-        requiremnts = ctx.rule[i].get("requirement")
+        requiremnts = ctx.rules[i].get("requirement")
         is_valid_cat = False
         if requiremnts:
             for req in requiremnts:
@@ -102,7 +107,7 @@ def _extract_categories(ctx: RenameContext):
                 elif req in ctx.org_file:
                     is_valid_cat = True
             
-        category = ctx.rule[i].get("kind").split(texts.kind_separator)[1]
+        category = ctx.rules[i].get("kind").split(texts.kind_separator)[1]
         if is_valid_cat:
             try:
                 ctx.extracts[i] = org_cat[category]
@@ -113,12 +118,12 @@ def _extract_categories(ctx: RenameContext):
             ctx.extracts[i] = f"No[{category}]"
             ctx.has_error = True
          
-def _pick_similar_version(org_vers: list, ver_rule: dict) -> str:
+def _pick_similar_version(org_vers: list, ver_rules: dict) -> str:
     if not org_vers:
         return ""
     
-    target_prefix = ver_rule.get("prefix", "")
-    target_format = ver_rule.get("format", "")
+    target_prefix = ver_rules.get("prefix", "")
+    target_format = ver_rules.get("format", "")
     # 理想とする形を一度作ってみる
     ideal_template = target_prefix + target_format.replace("n", "1")
 
@@ -136,7 +141,7 @@ def _pick_similar_version(org_vers: list, ver_rule: dict) -> str:
 
 def _extract_versions(ctx: RenameContext):
     ver_pos = []
-    for i, element in enumerate(ctx.rule):
+    for i, element in enumerate(ctx.rules):
         if element["kind"] == "VERSION":
             ver_pos.append(i)
   
@@ -162,8 +167,8 @@ def _extract_versions(ctx: RenameContext):
         return
 
     for i in ver_pos:
-        ver_rule = ctx.rule[i]
-        suitable_org_ver = _pick_similar_version(org_vers, ver_rule)
+        ver_rules = ctx.rules[i]
+        suitable_org_ver = _pick_similar_version(org_vers, ver_rules)
         
         if not suitable_org_ver:
             ctx.extracts[i] = "No[Version]"
@@ -174,8 +179,8 @@ def _extract_versions(ctx: RenameContext):
         digits = re.findall(r"\d+", suitable_org_ver)
         
         # 新しいフォーマット（例: "n.n.nnn"）の 'n' を、抽出した数字で順番に置換していく
-        new_format = ver_rule.get("format", "")
-        prefix = ver_rule.get("prefix", "")
+        new_format = ver_rules.get("format", "")
+        prefix = ver_rules.get("prefix", "")
         
         new_ver = ""
         digit_idx = 0
@@ -204,7 +209,7 @@ def _extract_versions(ctx: RenameContext):
 
 def _extract_names(ctx: RenameContext):
     name_pos = []
-    for i, element in enumerate(ctx.rule):
+    for i, element in enumerate(ctx.rules):
         if element["kind"] == "NAME":
             name_pos.append(i)
     
@@ -212,7 +217,7 @@ def _extract_names(ctx: RenameContext):
 
     delimiter = ctx.settings.get("delimiter")
     for i in name_pos:
-        if ctx.rule[i].get("remove_internal_delimiter"):
+        if ctx.rules[i].get("remove_internal_delimiter"):
             name = re.sub(RE_DELIM, "", ctx.remains)
         else:
             # 内部区切りを削除しない場合でも、delimiterが複数連続しているなら1つにする
@@ -224,12 +229,12 @@ def _extract_names(ctx: RenameContext):
             ctx.extracts[i] = "No[Name]"
             ctx.has_error = True
 
-def _rename_file(org_file: str, rule: list, settings: dict) -> tuple[str, bool, bool]:
+def _rename_file(org_file: str, rules: list, settings: dict) -> tuple[str, bool, bool]:
     remains = Path(org_file).stem
-    extracts = [""] * len(rule)
+    extracts = [""] * len(rules)
 
     ctx = RenameContext(
-        rule=rule,
+        rules=rules,
         settings=settings,
         org_file=org_file,
         remains=remains, 
@@ -245,7 +250,8 @@ def _rename_file(org_file: str, rule: list, settings: dict) -> tuple[str, bool, 
 
     return new_file, ctx.has_error, ctx.has_warn
 
-def rename_all_files(org_file_list: List[str], rule: list, settings: dict) -> Dict[str, dict]:
+
+def rename_all_files(org_file_list: List[str], rules: list, settings: dict) -> Dict[str, dict]:
     seq_style  = settings.get("sequence").get("style")
     seq_format = settings.get("sequence").get("format")
 
@@ -256,7 +262,7 @@ def rename_all_files(org_file_list: List[str], rule: list, settings: dict) -> Di
     new_file_dict_sequenced = defaultdict(list)
     for org_file in org_file_list:
         suffix = Path(org_file).suffix
-        new_file, has_error, has_warn = _rename_file(org_file, rule, settings)
+        new_file, has_error, has_warn = _rename_file(org_file, rules, settings)
 
         other_conflicts = new_file_list_raw.count(new_file + suffix)
 

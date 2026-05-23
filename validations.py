@@ -5,19 +5,22 @@ import texts
 
 
 def check_categories(categories: dict) -> bool:
-    if categories == None:
+    if categories is None:
         return True
     if not isinstance(categories, dict):
         raise TypeError
 
     for group_name, group_dict in categories.items():
+        if not isinstance(group_dict, dict):
+            raise KeyError(f"グループ「{group_name}」が辞書形式ではありません。コロンの後にスペースが挿入されているか確認してください。")
         if not any(key != "REQ" for key in group_dict):
             raise KeyError(f"グループ「{group_name}」内にカテゴリがありません")
     return True
 
-# ルール内にあるカテゴリがユーザー定義のカテゴリにあるか確認するため、categoryも渡す
-def check_rule(rule: list, categories: dict) -> bool:
-    for element in rule:
+
+def check_rules(rules: list, categories: dict) -> bool:
+    # ルール内にあるカテゴリがユーザー定義のカテゴリにあるか確認するため、categoryも渡す
+    for element in rules:
         if element.get("kind") == "NAME":
             if not isinstance(element.get("remove_internal_delimiter"), bool):
                 raise KeyError("NAME")
@@ -41,6 +44,7 @@ def check_rule(rule: list, categories: dict) -> bool:
 
     return True
 
+
 def check_settings(settings: dict) -> bool:
     if not isinstance(settings, dict):
         raise TypeError
@@ -57,23 +61,25 @@ def check_settings(settings: dict) -> bool:
     
     return True
 
-def check_cache(cache: dict) -> bool:
-    if "target_dir" not in cache:
+
+def check_caches(caches: dict) -> bool:
+    if "target_dir" not in caches:
         raise KeyError()
     
-    if "filename" not in cache:
+    if "filename" not in caches:
         raise KeyError()
     
     return True
 
-def make_sample(rule: list, settings: dict, selectedIndex: int) -> str:
+
+def make_sample(rules: list, settings: dict, selectedIndex: int) -> str:
     """ルールから形式のサンプルを作成；ルールが完成してなくても何か表示する"""
     current_year  = str(datetime.datetime.now().year)
     current_month = str(datetime.datetime.now().month).zfill(2)
     current_day   = str(datetime.datetime.now().day).zfill(2)
 
     elements = []
-    for element in rule:
+    for element in rules:
         kind = element.get("kind")
 
         if kind == "DATE":
@@ -128,9 +134,10 @@ def make_sample(rule: list, settings: dict, selectedIndex: int) -> str:
         
     return sample_text + ".xxx"
 
-def verify_comply_rule(filename: str, rule: list, settings: dict, categories: dict) -> bool:
+
+def verify_comply_rules(filename: str, rules: list, settings: dict, categories: dict) -> bool:
     pattern_list = []
-    for element in rule:
+    for element in rules:
         if element.get("kind") == "NAME":
             pattern_list.append(r".+")
             
@@ -147,7 +154,12 @@ def verify_comply_rule(filename: str, rule: list, settings: dict, categories: di
         else:
             group, category = element.get("kind").split(texts.kind_separator)
 
-            cat_pattern = categories.get(group).get(category).replace(" ", "").replace(",", "|")
+            target_cat = categories.get(group).get(category)
+            if isinstance(target_cat, list):
+                cat_pattern = "|".join(target_cat)
+            elif isinstance(target_cat, str):
+                cat_pattern = target_cat.replace(" ","").replace(",", "|")
+
             pattern_list.append(f"({cat_pattern})")
     
     suffix_pattern = r"\.\w+"

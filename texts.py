@@ -5,7 +5,7 @@
 kind_separator = "_KINDSEPARATOR_"
 
 DEFAULT_YAMLS={
-    "rule": 
+    "rules": 
     [
         {"kind": "NAME", "remove_internal_delimiter": True},
         {"kind": "DATE", "format": "YY-MM-DD"}
@@ -30,7 +30,7 @@ DEFAULT_YAMLS={
         "sequence": {"style": "all_overlaps", "format": "(n)"}
     },
 
-    "cache":
+    "caches":
     {
         "target_dir": "",
         "filename": {}

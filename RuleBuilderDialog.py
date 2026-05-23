@@ -1,13 +1,16 @@
+import re
 import yaml
 
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox,  QComboBox, QDialog, QDialogButtonBox, 
                                QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListView, 
-                               QListWidget, QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout,QWidget)
+                               QListWidget, QListWidgetItem, QMessageBox, QPushButton, QSizePolicy, 
+                               QVBoxLayout, QWidget)
 from PySide6.QtCore import Qt, QSize, Signal
 
 import EditCategoriesDialog
 import EditSettingsDialog
 import fileLoadingUtils
+import styles
 import texts
 import validations
 
@@ -34,6 +37,24 @@ class SortableListWidget(QListWidget):
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragDrop)
         self.setDefaultDropAction(Qt.MoveAction)
+
+        # スクロールバーの状態変化を監視
+        self.horizontalScrollBar().rangeChanged.connect(self._adjust_height_for_scrollbar)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # 画面に配置され、レイアウトやスクロールバーの実際のサイズが確定した後に計算する
+        self._adjust_height_for_scrollbar()
+
+    def _adjust_height_for_scrollbar(self):
+        """スクロールバーが表示されているならウィジェットの高さを伸ばす"""
+        base_height = 55  # スクロールバーがない時の高さ
+        
+        if self.horizontalScrollBar().maximum() > 0:
+            scrollbar_height = self.horizontalScrollBar().height()
+            self.setFixedHeight(base_height + scrollbar_height)
+        else:
+            self.setFixedHeight(base_height)
 
     def dropEvent(self, event):
         source = event.source()
@@ -71,6 +92,7 @@ class SortableListWidget(QListWidget):
                 event.accept()
         
         self.order_changed.emit()
+        self._adjust_height_for_scrollbar()
 
 class RuleBlock(QListWidgetItem):
     def __init__(self, element):
@@ -90,26 +112,24 @@ class RuleBuilderDialog(QDialog):
         self.setModal(True) 
 
         base_dir = fileLoadingUtils.get_base_dir()
-            
-        self.rule_yaml_path = base_dir / "rule.yaml"
-        self.settings_yaml_path = base_dir / "settings.yaml"
-        self.categories_yaml_path = base_dir / "categories.yaml"
+        self._rules_path = base_dir / "rules.yaml"
 
-        # categories.yaml の生データをそのまま保持する辞書
-        self.categories = {}
+        self._categories = fileLoadingUtils.load_categories(self)
 
         self._setup_ui()
-        
+        self._spread_rules()
+        self._setup_palette()
+        self._call_make_sample()
+
         self.settings_dialog = EditSettingsDialog.EditSettingsDialog(self)
         self.settings_dialog.settings_updated.connect(self._call_make_sample)
 
         self.categories_dialog = EditCategoriesDialog.EditCategoriesDialog(self)
         self.categories_dialog.categories_updated.connect(self._on_categories_file_updated)
 
-        self.categories = fileLoadingUtils.load_categories(self)
-        self._spread_rule()
-
-        self._setup_palette()
+    def showEvent(self, event):
+        """ダイアログが画面に表示された瞬間にサンプルのサイズを再計算する"""
+        super().showEvent(event)
         self._call_make_sample()
 
     def _setup_ui(self):
@@ -120,94 +140,95 @@ class RuleBuilderDialog(QDialog):
         # 左上：サンプルを表示
         sample_group = QGroupBox("サンプル")
         sample_layout = QVBoxLayout()
-        self.sample = QLabel()
-        self.sample.setStyleSheet("padding: 3px; font-size: 15px; font-weight: bold;")
-        self.sample.setWordWrap(True)
-        self.sample.setAlignment(Qt.AlignCenter)
-        self.sample.setTextFormat(Qt.RichText)
-        sample_layout.addWidget(self.sample)
+        self._sample_label = QLabel()
+        self._sample_label.setStyleSheet(styles.RuleStyle.SAMPLE_LABEL)
+        self._sample_label.setWordWrap(True)
+        self._sample_label.setAlignment(Qt.AlignCenter)
+        self._sample_label.setTextFormat(Qt.RichText)
+        sample_layout.addWidget(self._sample_label)
         sample_group.setLayout(sample_layout)
         left_layout.addWidget(sample_group)
 
         # 左中：現在のルール
-        rule_group = QGroupBox("ブロック追加・並び替え")
-        rule_layout = QVBoxLayout()
+        rules_group = QGroupBox("ブロック追加・並び替え")
+        rules_layout = QVBoxLayout()
 
-        rule_layout.addWidget(QLabel("現在のルール順序（ドラッグで並び替え / ×で削除）:"))
-        self.block_list = SortableListWidget()
-        self.block_list.setFlow(QListView.LeftToRight)
-        self.block_list.setWrapping(False)
-        self.block_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.block_list.setFixedHeight(55)
-        self.block_list.setStyleSheet("""
-            QListWidget { background-color: #2b2b2b; outline: none; padding : 5px; border-radius: 4px;}
-            QListWidget::item { background-color:#555; color:white; margin:2px; min-width:100px; border-radius: 3px;}
-            QListWidget::item:selected { background-color: #007ACC;}
-        """)
-        self.block_list.itemSelectionChanged.connect(self._on_block_selected)
+        rules_layout.addWidget(QLabel("現在のルール順序（ドラッグで並び替え / ×で削除）:"))
+        self._block_list = SortableListWidget()
+        self._block_list.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+
+        self._block_list.setFlow(QListView.LeftToRight)
+        self._block_list.setWrapping(False)
+        self._block_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         
-        self.block_list.order_changed.connect(self._refresh_list_widgets)
-        self.block_list.order_changed.connect(self._call_make_sample)
-        self.block_list.palette_dropped.connect(self._on_block_dropped)
-        rule_layout.addWidget(self.block_list)
+        self._block_list.setStyleSheet(styles.RuleStyle.RULE_BLOCK_LIST)
+        self._block_list.itemSelectionChanged.connect(self._on_block_selected)
+        
+        self._block_list.order_changed.connect(self._refresh_list_widgets)
+        self._block_list.order_changed.connect(self._call_make_sample)
+        self._block_list.palette_dropped.connect(self._on_block_dropped)
+        rules_layout.addWidget(self._block_list)
 
         # 左下：素材パレット
-        rule_layout.addWidget(QLabel("利用可能なブロック（上にドラッグ＆ドロップして追加）:"))
-        self.palette_list = QListWidget()
-        self.palette_list.setFlow(QListView.LeftToRight)
+        rules_layout.addWidget(QLabel("利用可能なブロック（上にドラッグ＆ドロップして追加）:"))
+        self._palette_list = QListWidget()
+        self._palette_list.setFlow(QListView.LeftToRight)
 
-        self.palette_list.setWrapping(True)
-        self.palette_list.setGridSize(QSize(110, 40)) 
-        self.palette_list.setSpacing(4)
+        self._palette_list.setWrapping(True)
+        self._palette_list.setResizeMode(QListView.Adjust)
+        self._palette_list.setGridSize(QSize(105, 40)) 
+        self._palette_list.setSpacing(4)
 
-        self.palette_list.setDragEnabled(True)
-        self.palette_list.setAcceptDrops(False)
-        self.palette_list.setStyleSheet("""
-            QListWidget { background-color: #222; padding: 3px; border-radius: 4px; }
-            QListWidget::item { background-color: #007ACC; color: white; margin: 2px; padding: 4px 10px; border-radius: 3px;}
-        """)
-        rule_layout.addWidget(self.palette_list)
+        self._palette_list.setDragEnabled(True)
+        self._palette_list.setAcceptDrops(False)
+        self._palette_list.setStyleSheet(styles.RuleStyle.PALLETE_LIST)
+        rules_layout.addWidget(self._palette_list)
 
-        rule_group.setLayout(rule_layout)
-        left_layout.addWidget(rule_group)
+        rules_group.setLayout(rules_layout)
+        left_layout.addWidget(rules_group)
 
         # 右：詳細設定
         right_group = QGroupBox("詳細設定")
         right_layout = QVBoxLayout()
 
-        self.empty_label = QLabel('ブロックを選択してください')
-        self.empty_label.setAlignment(Qt.AlignCenter)
-        right_layout.addWidget(self.empty_label)
+        self._property_placeholder = QLabel('ブロックを選択してください')
+        self._property_placeholder.setAlignment(Qt.AlignCenter)
+        right_layout.addWidget(self._property_placeholder)
 
-        self.detail_container = QWidget()
-        self.detail_form_layout = QFormLayout(self.detail_container)
-        self.detail_container.hide()
-        right_layout.addWidget(self.detail_container)
+        self._property_container = QWidget()
+        self.detail_form_layout = QFormLayout(self._property_container)
+        self._property_container.hide()
+        right_layout.addWidget(self._property_container)
         right_layout.addStretch()
 
         right_group.setLayout(right_layout)
         
-        split_layout.addLayout(left_layout, 3)
+        # ブロックがたくさん追加されても横幅が伸びないように、一度コンテナに載せる
+        left_container = QWidget()
+        left_container.setLayout(left_layout)
+        left_container.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+
+        split_layout.addWidget(left_container, 3)
         split_layout.addWidget(right_group, 2)
         main_layout.addLayout(split_layout)
 
         # 下：ボタン類
         bottom_layout = QHBoxLayout()
         
-        self.settings_btn = QPushButton("全体設定")
-        self.settings_btn.clicked.connect(lambda: self.settings_dialog.exec())
-        bottom_layout.addWidget(self.settings_btn)
+        settings_btn = QPushButton("全体設定")
+        settings_btn.clicked.connect(lambda: self.settings_dialog.exec())
+        bottom_layout.addWidget(settings_btn)
 
-        self.category_editor_btn = QPushButton("カテゴリの編集")
-        self.category_editor_btn.clicked.connect(lambda: self.categories_dialog.exec())
-        bottom_layout.addWidget(self.category_editor_btn)
+        category_editor_btn = QPushButton("カテゴリの編集")
+        category_editor_btn.clicked.connect(lambda: self.categories_dialog.exec())
+        bottom_layout.addWidget(category_editor_btn)
         
         bottom_layout.addStretch()
 
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.button(QDialogButtonBox.Ok).setText("保存")
         button_box.button(QDialogButtonBox.Cancel).setText("キャンセル")
-        button_box.accepted.connect(self._save_rule)
+        button_box.accepted.connect(self.save_rules)
         button_box.rejected.connect(self.reject)
         bottom_layout.addWidget(button_box)
         
@@ -215,10 +236,10 @@ class RuleBuilderDialog(QDialog):
 
     def _setup_palette(self):
         """素材パレットの表示を更新 (グループ名のみを表示)"""
-        self.palette_list.clear()
+        self._palette_list.clear()
         
         kinds = ["VERSION", "DATE", "NAME"]
-        kinds.extend(sorted(self.categories.keys()))
+        kinds.extend(sorted(self._categories.keys()))
             
         for kind in kinds:
             block = PaletteBlock(kind)
@@ -228,14 +249,14 @@ class RuleBuilderDialog(QDialog):
                 block.setBackground(Qt.GlobalColor.darkBlue)
             else:
                 block.setBackground(Qt.GlobalColor.darkGreen)
-            self.palette_list.addItem(block)
+            self._palette_list.addItem(block)
 
-    def _spread_rule(self):
-        """rule.yamlから現在の配置ルールをロードして画面に並べる"""
-        self.block_list.clear()
+    def _spread_rules(self):
+        """rules.yamlから現在の配置ルールをロードして画面に並べる"""
+        self._block_list.clear()
 
-        self.rule = fileLoadingUtils.load_rule(self)
-        for element in self.rule:
+        self.rules = fileLoadingUtils.load_rules(self)
+        for element in self.rules:
             kind = element.get("kind", "")
             
             # ユーザー定義カテゴリの場合、UI用の補助プロパティを復元する
@@ -246,20 +267,13 @@ class RuleBuilderDialog(QDialog):
             
             # Blockを生成
             block = RuleBlock(element)
-            self.block_list.addItem(block)
+            self._block_list.addItem(block)
 
         self._refresh_list_widgets()
-    
-    def _write_default_texts(self, file_target: str):
-        try:
-            with open(getattr(self, f"{file_target}_yaml_path"), "w", encoding="utf-8") as f:
-                yaml.safe_dump(texts.DEFAULT_YAMLS[file_target], f, default_flow_style=False, allow_unicode=True)
-        except Exception as e:
-            print(f"Failed to write default {file_target}: {e}")
-    
+
     def _on_categories_file_updated(self):
-        self.categories = fileLoadingUtils.load_categories(self)
-        self._spread_rule
+        self._categories = fileLoadingUtils.load_categories(self)
+        self._spread_rules
         self._setup_palette()
         self._call_make_sample()
 
@@ -273,7 +287,7 @@ class RuleBuilderDialog(QDialog):
         if kind in default_elements:
             element = default_elements[kind].copy()
         else:
-            group = self.categories.get(kind, {})
+            group = self._categories.get(kind, {})
             categories = [c for c in group.keys() if c != "REQ"]
             
             # デフォルトで一番上のカテゴリを選択状態にする
@@ -293,8 +307,8 @@ class RuleBuilderDialog(QDialog):
 
         block = RuleBlock(element)
         block.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.block_list.insertItem(row, block)
-        self.block_list.setCurrentItem(block)
+        self._block_list.insertItem(row, block)
+        self._block_list.setCurrentItem(block)
         
         self._refresh_list_widgets()
         self._call_make_sample()
@@ -306,16 +320,16 @@ class RuleBuilderDialog(QDialog):
             if widget_item.widget(): 
                 widget_item.widget().deleteLater()
 
-        selected_blocks = self.block_list.selectedItems()
+        selected_blocks = self._block_list.selectedItems()
         if not selected_blocks:
-            self.empty_label.show()
-            self.detail_container.hide()
+            self._property_placeholder.show()
+            self._property_container.hide()
             return
         
         self._call_make_sample()
 
-        self.empty_label.hide()
-        self.detail_container.show()
+        self._property_placeholder.hide()
+        self._property_container.show()
         
         block = selected_blocks[0]
         element = block.element
@@ -344,9 +358,9 @@ class RuleBuilderDialog(QDialog):
             self.ver_format_edit.textChanged.connect(self._call_make_sample)
             self.detail_form_layout.addRow("数字の形式:", self.ver_format_edit)
             
-        elif block.kind in self.categories:
+        elif block.kind in self._categories:
             group_name = block.kind
-            group = self.categories.get(group_name, {})
+            group = self._categories.get(group_name, {})
             
             categories = [c for c in group.keys() if c != "REQ"]
             
@@ -358,7 +372,7 @@ class RuleBuilderDialog(QDialog):
             
             if not current_target and categories:
                 current_target = categories[0]
-                self.on_target_changed(element, group, current_target)
+                self._on_target_changed(element, group, current_target)
                 
             idx = self.cat_combo.findData(current_target)
             if idx >= 0:
@@ -366,7 +380,7 @@ class RuleBuilderDialog(QDialog):
             elif categories:
                 self.cat_combo.setCurrentIndex(0)
                 
-            self.cat_combo.currentIndexChanged.connect(lambda idx: self.on_target_changed(element, group, self.cat_combo.itemData(idx)))
+            self.cat_combo.currentIndexChanged.connect(lambda idx: self._on_target_changed(element, group, self.cat_combo.itemData(idx)))
             self.detail_form_layout.addRow("抽出ターゲットのカテゴリ:", self.cat_combo)
             
             requirement_str = group.get("REQ", "_")
@@ -378,7 +392,7 @@ class RuleBuilderDialog(QDialog):
             req_label = QLabel(f"適用要件: {display_req}")
             self.detail_form_layout.addRow(req_label)
 
-    def on_target_changed(self, element, group, target):
+    def _on_target_changed(self, element, group, target):
         """詳細画面でターゲットが変更された時に、一時領域の選択状態を更新してサンプルを再描画する"""
         element["_selected_target"] = target
         element["kind"] = element.get('_group', '') + texts.kind_separator + target
@@ -397,30 +411,51 @@ class RuleBuilderDialog(QDialog):
             
         self._call_make_sample()
 
-    def _call_make_sample(self):
-        settings = {"original_date_format": "YMD", "delimiter": "_", "sequence": {"style": "all_overlaps", "format": "(n)"}}
-        if self.settings_yaml_path.exists():
-            try:
-                with open(self.settings_yaml_path, "r", encoding="utf-8") as f:
-                    settings_data = yaml.safe_load(f)
-                    if isinstance(settings_data, dict):
-                        settings.update(settings_data)
-            except Exception as e:
-                print(f"Preview load settings error: {e}")
+    def _adjust_sample_font_size(self, text):
+        """テキストがラベルの横幅に1行で収まるようにフォントサイズを動的に調節する"""
+        from PySide6.QtGui import QFont, QFontMetrics
+        
+        max_size = 12
+        min_size = 3
+        
+        font = QFont()
+        font.setBold(True) # styles.py の font-weight: bold に合わせる
+        
+        available_width = self._sample_label.width() - 16
+        if available_width <= 0:
+            available_width = 300 # 初期化前などのフォールバック
+            
+        plain_text = re.sub(r'<[^>]*>', '', text)
 
-        rule_blocks = self._get_current_rule()
-        selected_index = self.block_list.currentRow()
+        suitable_size = min_size
+        for size in range(max_size, min_size - 1, -1):
+            font.setPointSize(size)
+            metrics = QFontMetrics(font)
+            text_width = metrics.horizontalAdvance(plain_text)
+            
+            if text_width <= available_width:
+                suitable_size = size
+                break
+                
+        font.setPointSize(suitable_size)
+        self._sample_label.setFont(font)
+        
+        self._sample_label.setText(text)
+
+    def _call_make_sample(self):
+        settings = fileLoadingUtils.load_settings(self)
+        rules_blocks = self._get_current_rules()
+        selected_index = self._block_list.currentRow()
         
         try:
-            sample_text = validations.make_sample(rule_blocks, settings, selected_index)
-            self.sample.setText(sample_text)
+            sample_text = validations.make_sample(rules_blocks, settings, selected_index)
+            self._adjust_sample_font_size(sample_text)
         except Exception as e:
-            print(f"Preview error: {e}")
-            self.sample.setText("<span style='color:gray;'>サンプルプレビュー (validations 未接続)</span>")
+            self._adjust_sample_font_size(f"<span style='color:gray;'>サンプルを利用できません: {e}</span>")
 
     def _refresh_list_widgets(self):
-        for i in range(self.block_list.count()):
-            block = self.block_list.item(i)
+        for i in range(self._block_list.count()):
+            block = self._block_list.item(i)
             display_text = getattr(block, "display_text", block.kind)
             
             widget = DragableBlockWidget()
@@ -429,20 +464,13 @@ class RuleBuilderDialog(QDialog):
             layout.setSpacing(6)
             
             label = QLabel(display_text)
-            label.setStyleSheet("color: white; font-weight: bold; background: transparent;")
+            label.setStyleSheet(styles.RuleStyle.RULE_BLOCK_LABEL)
             label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             layout.addWidget(label)
             
             close_btn = QPushButton("×")
             close_btn.setFixedSize(14, 14)
-            close_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #d9534f; color: white;
-                    border-radius: 7px; font-size: 9px; font-weight: bold; border: none;
-                    line-height: 14px;
-                }
-                QPushButton:hover { background-color: #c9302c; }
-            """)
+            close_btn.setStyleSheet(styles.RuleStyle.DELETE_BLOCK_BTN)
             close_btn.clicked.connect(lambda _, b=block: self._delete_block(b))
             layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignTop)
             
@@ -453,21 +481,21 @@ class RuleBuilderDialog(QDialog):
             # リストアイテム枠の余白分として、横幅を少しだけ拡張する
             block.setSizeHint(QSize(size.width() + 6, size.height()))
 
-            self.block_list.setItemWidget(block, widget)
+            self._block_list.setItemWidget(block, widget)
 
     def _delete_block(self, block):
-        row = self.block_list.row(block)
+        row = self._block_list.row(block)
         if row >= 0:
-            self.block_list.takeItem(row)
+            self._block_list.takeItem(row)
             self._on_block_selected()
             self._refresh_list_widgets() 
             self._call_make_sample()
 
-    def _get_current_rule(self):
+    def _get_current_rules(self):
         """画面上のブロック群をルールとしてパッキング"""
-        rule_blocks = []
-        for i in range(self.block_list.count()):
-            element = self.block_list.item(i).element
+        rules_blocks = []
+        for i in range(self._block_list.count()):
+            element = self._block_list.item(i).element
             
             if "_group" in element:
                 group_name = element["_group"]
@@ -479,23 +507,23 @@ class RuleBuilderDialog(QDialog):
                     "requirement": element.get("requirement", []),
                     "target": element.get("target", [])
                 }
-                rule_blocks.append(packed_elem)
+                rules_blocks.append(packed_elem)
             else:
-                rule_blocks.append(element)
-        return rule_blocks
+                rules_blocks.append(element)
+        return rules_blocks
 
-    def _save_rule(self):
-        rule_blocks = self._get_current_rule()
+    def save_rules(self):
+        rules_blocks = self._get_current_rules()
         
         try:
-            validations.check_rule(rule_blocks, self.categories)
+            validations.check_rules(rules_blocks, self._categories)
         except Exception as e:
             QMessageBox.warning(self, "命名規則エラー", str(e))
             return
 
         try:
-            with open(self.rule_yaml_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(rule_blocks, f, default_flow_style=False, allow_unicode=True)
+            with open(self._rules_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(rules_blocks, f, default_flow_style=False, allow_unicode=True)
             self.accept()
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"保存に失敗しました:\n{e}")

@@ -9,3 +9,7 @@
   - vfx
   - fx
   - efx
+- format: YY-MM-DD
+  kind: DATE
+- kind: NAME
+  remove_internal_delimiter: true

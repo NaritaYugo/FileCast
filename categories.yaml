@@ -4,4 +4,14 @@ Fruits:
   sweet: apple, grape
 Game:
   REQ: _
-  VFX: effect, vfx, fx, efx
+  VFX:
+  - effect
+  - vfx
+  - fx
+  - efx
+test:
+  test: test
+test2:
+  test: test
+test3:
+  test: test
