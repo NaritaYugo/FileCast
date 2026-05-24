@@ -29,11 +29,16 @@ def load_categories(parent) -> tuple[dict, str]:
     """カテゴリを読み込み、dict形式にしたものと、そのままのyamlテキストを返す"""
     categories_path = get_base_dir() / "categories.yaml"
 
+    yaml.add_representer(FlowStyleList, flow_style_list_representer)
+
+    default_cat = texts.DEFAULT_YAMLS["categories"]
+    flow_style_default_cat = validations.to_flowStyleList(texts.DEFAULT_YAMLS["categories"])
+
     # ファイルが無ければ黙って新規作成
     if not categories_path.exists():
         with open(categories_path, "w", encoding="utf-8") as f:
-            yaml.dump(texts.DEFAULT_YAMLS["categories"], f, sort_keys=False, allow_unicode=True)
-        return texts.DEFAULT_YAMLS["categories"], yaml.dump(texts.DEFAULT_YAMLS["categories"], sort_keys=False, allow_unicode=True)
+            yaml.dump(flow_style_default_cat, f, sort_keys=False, allow_unicode=True)
+        return default_cat, yaml.dump(flow_style_default_cat, sort_keys=False, allow_unicode=True)
     
     try:
         with open(categories_path, "r", encoding="utf-8") as f:
@@ -53,8 +58,8 @@ def load_categories(parent) -> tuple[dict, str]:
 
         if reply == QMessageBox.StandardButton.Yes:
             with open(categories_path, "w", encoding="utf-8") as f:
-                yaml.dump(texts.DEFAULT_YAMLS["categories"], f, sort_keys=False, allow_unicode=True)
-            return texts.DEFAULT_YAMLS["categories"], yaml.dump(texts.DEFAULT_YAMLS["categories"], sort_keys=False, allow_unicode=True)
+                yaml.dump(flow_style_default_cat, f, sort_keys=False, allow_unicode=True)
+            return default_cat, yaml.dump(flow_style_default_cat, sort_keys=False, allow_unicode=True)
         
     return None
 

@@ -22,6 +22,6 @@ share/python-wheels/
 .vscode/
 *.yaml
 test_*
-.pytest*
-.spec
-.exe
+*.pytest*
+*.spec
+*.exe

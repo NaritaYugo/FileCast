@@ -3,7 +3,6 @@ import re
 import yaml
 
 import fileLoadingUtils
-import texts
 
 
 FORBIDDEN_CHARS = r'[\\/:*?"<>|]'
@@ -29,6 +28,26 @@ def check_categories(categories: dict) -> bool:
                 raise ValueError(f"カテゴリ「{category}」内のアイテム「{item}」にファイル名として使用できない文字が含まれています")
     return True
 
+
+def to_flowStyleList(categories: dict) -> dict:
+    if categories is None:
+        return True
+    
+    if not isinstance(categories, dict):
+        raise TypeError(f"辞書形式ではありません。")
+
+    for i, (category, items) in enumerate(categories.items()):
+        if not isinstance(items, dict):
+            raise TypeError(f"カテゴリ「{category}」が辞書形式ではありません。")
+        
+        # 改行位置を調節して書き込むため、listを継承したFlowStyleList型にする
+        for item, patterns in items.items():
+            if isinstance(patterns, list):
+                categories[category][item] = fileLoadingUtils.FlowStyleList(patterns)
+            else:
+                raise TypeError(f"カテゴリ「{category}」内のアイテム「{item}」の形式が正しくありません")
+
+    return categories
 
 def read_as_yaml_relaxed(categories_text: str) -> dict:
     """ユーザーの入力に少々ミスがあっても修正し、yamlとして読み込んで返す"""
@@ -77,24 +96,7 @@ def read_as_yaml_relaxed(categories_text: str) -> dict:
     except Exception as e:
         raise Exception(f"yamlとしてパースできません: {e}")
 
-    if categories is None:
-        return True
-    
-    if not isinstance(categories, dict):
-        raise TypeError(f"辞書形式ではありません。")
-
-    for i, (category, items) in enumerate(categories.items()):
-        if not isinstance(items, dict):
-            raise TypeError(f"カテゴリ「{category}」が辞書形式ではありません。")
-        
-        # 改行位置を調節して書き込むため、listを継承したFlowStyleList型にする
-        for item, patterns in items.items():
-            if isinstance(patterns, list):
-                categories[category][item] = fileLoadingUtils.FlowStyleList(patterns)
-            else:
-                raise TypeError(f"カテゴリ「{category}」内のアイテム「{item}」の形式が正しくありません")
-
-    return categories
+    return to_flowStyleList(categories)
 
 
 def check_rules(rules: list, categories: dict) -> bool:

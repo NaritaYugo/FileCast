@@ -17,7 +17,7 @@ import validations
 DEFALT_BLOCKS = {
     "DATE": {"kind": "DATE", "format": "YYYY-MM-DD"},
     "NAME": {"kind": "NAME", "remove_internal_delimiter": True},
-    "VERSION": {"kind": "VERSION", "prefix": "ver_", "format": "n.n.nnn"}
+    "VERSION": {"kind": "VERSION", "prefix": "ver_", "format": "n_n_nnn"}
 }
 
 class PaletteBlock(QListWidgetItem):
