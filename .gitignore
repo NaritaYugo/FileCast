@@ -23,3 +23,5 @@ share/python-wheels/
 *.yaml
 test_*
 .pytest*
+.spec
+.exe
