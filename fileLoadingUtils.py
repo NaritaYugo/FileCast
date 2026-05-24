@@ -98,14 +98,12 @@ def load_rules(parent) -> dict:
     categories_path = get_base_dir() / "categories.yaml"
     rules_path = get_base_dir() / "rules.yaml"
 
-    if not rules_path.exists() or not categories_path.exists():
-        if not rules_path:
-            with open(rules_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(texts.DEFAULT_YAMLS["rules"], f, default_flow_style=False, allow_unicode=True)
+    if not categories_path.exists():
+        raise Exception("内部エラー: categories.yamlが存在しない状態で、load_rulesが呼ばれました。ソフトを再起動してください。")
 
-        if not categories_path:
-            with open(categories_path, "w", encoding="utf-8") as f:
-                yaml.safe_dump(texts.DEFAULT_YAMLS["categories"], f, default_flow_style=False, allow_unicode=True)
+    if not rules_path.exists():
+        with open(rules_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(texts.DEFAULT_YAMLS["rules"], f, default_flow_style=False, allow_unicode=True)
 
         return texts.DEFAULT_YAMLS["rules"]
 
