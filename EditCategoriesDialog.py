@@ -1,7 +1,8 @@
 import re
 import yaml
 
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QMessageBox, QPlainTextEdit, QPushButton,QVBoxLayout
+from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QLabel, QMessageBox, 
+                               QPlainTextEdit, QPushButton, QVBoxLayout, QTextBrowser)
 from PySide6.QtGui import QFont
 from PySide6.QtCore import Qt
 
@@ -9,6 +10,27 @@ import fileLoadingUtils
 import texts
 import validations
 
+
+class ReferenceDialog(QDialog):
+    """スクロール用"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("記述方法リファレンス")
+        self.resize(600, 700)
+        
+        layout = QVBoxLayout(self)
+        
+        self.text_browser = QTextBrowser(self)
+        self.text_browser.setPlainText(texts.CATEGORY_REFERENCE)
+        
+        font = QFont("Meiryo UI", 10)
+        self.text_browser.setFont(font)
+        
+        layout.addWidget(self.text_browser)
+        
+        button_box = QDialogButtonBox(QDialogButtonBox.Close)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
 
 # Tabをスペース2つ分に変更して入力する
 class YamlEditor(QPlainTextEdit):
@@ -38,7 +60,7 @@ class EditCategoriesDialog(QDialog):
         super().showEvent(arg__1)
         _, _category_plane_text = fileLoadingUtils.load_categories(self)
         # [] を削除し、グループごとに空行を挟んで表示
-        cleaned_text = _category_plane_text.replace("[", "").replace("]", "")
+        cleaned_text = _category_plane_text.replace("[", "").replace("]", "").replace("_EXCLAMATION", "!").replace("_ASTERISK", "*")
         display_text = re.sub(r"\n(?=\S+:)", r"\n\n", cleaned_text)
         self._edit_categories.setPlainText(display_text)
 
@@ -49,9 +71,7 @@ class EditCategoriesDialog(QDialog):
         main_layout.addWidget(header_label)
 
         open_reference_button = QPushButton("記述方法リファレンス")
-        open_reference_button.clicked.connect(
-            lambda: QMessageBox.information(self, "リファレンス", texts.CATEGORY_REFERENCE)
-            )
+        open_reference_button.clicked.connect(self._open_reference)
         main_layout.addWidget(open_reference_button)
 
         self._edit_categories = YamlEditor()
@@ -71,6 +91,10 @@ class EditCategoriesDialog(QDialog):
         button_box.accepted.connect(self.save_categories)
         button_box.rejected.connect(self.reject)
         main_layout.addWidget(button_box)
+
+    def _open_reference(self):
+        dialog = ReferenceDialog(self)
+        dialog.exec()
 
     def save_categories(self):
         """エディタの内容をバリデーションした上でYAMLファイルへ保存する"""

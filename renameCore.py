@@ -6,8 +6,6 @@ from typing import List, Dict
 
 from rapidfuzz.distance import Levenshtein
 
-import texts
-
 
 RE_DELIM = r"[_\.\-\s]"
 
@@ -18,8 +16,7 @@ class RenameContext:
     org_file: str
     remains: str
     extracts: list
-    has_error: bool = False
-    has_warn: bool = False
+    is_warning: bool = False
 
 
 def _build_word_search_pattern(word: str) -> str:
@@ -97,7 +94,7 @@ def _extract_dates(ctx: RenameContext):
             ctx.extracts[i] = new_format
         except KeyError:
             ctx.extracts[i] = "No[Date]"
-            ctx.has_error = True
+            ctx.is_warning = True
 
 def _extract_categories(ctx: RenameContext):
     cat_pos = []
@@ -127,8 +124,10 @@ def _extract_categories(ctx: RenameContext):
     for i in cat_pos:
         requiremnts = ctx.rules[i].get("requirement")
         # requirementsが空ならTrue
-        is_valid_cat = not bool(requiremnts)
+        is_valid_cat = False
         if requiremnts:
+            if not requiremnts or "_ASTERISK" in requiremnts:
+                is_valid_cat = True
             for req in requiremnts:
                 if (req.startswith(".") and req == Path(ctx.org_file).suffix):
                     is_valid_cat = True
@@ -141,13 +140,17 @@ def _extract_categories(ctx: RenameContext):
                 ctx.extracts[i] = org_cat[category][0]
             elif len(org_cat[category]) > 1:
                 ctx.extracts[i] = f"Ambig[{"_".join(org_cat[category])}]"
-                ctx.has_warn = True
+                ctx.is_warning = True
             else:
                 ctx.extracts[i] = f"No[{category}]"
-                ctx.has_error = True
-        else:
+                ctx.is_warning = True
+
+        elif "_EXCLAMATION" in requiremnts:
+            ctx.extracts[i] = ""
+        
+        else: 
             ctx.extracts[i] = f"No[{category}]"
-            ctx.has_error = True
+            ctx.is_warning = True
          
 def _pick_similar_version(org_vers: list, ver_rules: dict) -> str:
     if not org_vers:
@@ -204,7 +207,7 @@ def _extract_versions(ctx: RenameContext):
         
         if not suitable_org_ver:
             ctx.extracts[i] = "No[Version]"
-            ctx.has_error = True
+            ctx.is_warning = True
             continue
 
         # 元のバージョンから数字だけを抽出する (例: "v1.2.3" -> ["1", "2", "3"])
@@ -227,7 +230,7 @@ def _extract_versions(ctx: RenameContext):
                 else:
                     # サブバージョンが足りない場合は、サブバージョンを0とする
                     new_ver += "0".zfill(len(token))
-                    ctx.has_warn = True
+                    ctx.is_warning = True
             else:
                 new_ver += token
 
@@ -261,7 +264,7 @@ def _extract_names(ctx: RenameContext):
             ctx.extracts[i] = name
         else:
             ctx.extracts[i] = "No[Name]"
-            ctx.has_error = True
+            ctx.is_warning = True
 
 def _rename_file(org_file: str, rules: list, settings: dict) -> tuple[str, bool, bool]:
     remains = Path(org_file).stem
@@ -280,9 +283,11 @@ def _rename_file(org_file: str, rules: list, settings: dict) -> tuple[str, bool,
     _extract_versions(ctx)
     _extract_names(ctx)
 
+    ctx.extracts = [x for x in ctx.extracts if x] # 空文字を削除
+
     new_file = settings.get("delimiter").join(ctx.extracts)
 
-    return new_file, ctx.has_error, ctx.has_warn
+    return new_file, ctx.is_warning
 
 
 def rename_all_files(org_file_list: List[str], rules: list, settings: dict) -> Dict[str, dict]:
@@ -296,7 +301,7 @@ def rename_all_files(org_file_list: List[str], rules: list, settings: dict) -> D
     file_counts = defaultdict(int)
     for org_file in org_file_list:
         suffix = Path(org_file).suffix
-        new_file, has_error, has_warn = _rename_file(org_file, rules, settings)
+        new_file, is_warning = _rename_file(org_file, rules, settings)
 
         base_name_with_suffix = new_file + suffix
         other_conflicts = file_counts[base_name_with_suffix]
@@ -314,8 +319,7 @@ def rename_all_files(org_file_list: List[str], rules: list, settings: dict) -> D
         file_counts[base_name_with_suffix] += 1
         new_file_dict_sequenced[org_file] = {
             "new_file": new_file + sequence + suffix, 
-            "has_error":has_error, 
-            "has_warn": has_warn
+            "is_warning":is_warning, 
             }
             
     return new_file_dict_sequenced

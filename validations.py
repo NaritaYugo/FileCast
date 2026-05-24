@@ -44,18 +44,25 @@ def read_as_yaml_relaxed(categories_text: str) -> dict:
     cleand_lines = []
 
     for i, line in enumerate(lines):
+        # 全角を半角に変更
+        line = line.replace("：", ":").replace("，",",").replace("、",",").replace("　"," ").replace("！", "!")
+
+        line = line.replace("!", "_EXCLAMATION")
+        line = line.replace("*", "_ASTERISK")
+
         if re.search(FORBIDDEN_CHARS, "".join(line).replace(":", "")):
             raise ValueError(f"{i}行目: ファイル名として使用できない文字が含まれています")
-        
-        # 全角を半角に変更
-        line = line.replace("：", ":").replace("，",",").replace("、",",").replace("　"," ")
-        
+
+        # item:: patternsの場合、item: item, patterns にする
+        if line.startswith(" ") and "::" in line:
+            line = re.sub(r"(\w+)::", r"\1: \1, ", line)
+    
+        # item または item: または item:: だけの場合、item: item にする
+        if line.startswith(" ") and (":" not in line or line.replace(" ", "").endswith(":")):
+            line = re.sub(r"(\w+):{1,2}", r"\1: \1", line)
+
         # スペースを入れ忘れている場合のためにコロンの後のスペースの数を増やしておく
         line = line.replace(":", ": ")
-    
-        # itemだけの場合、item: itemにする
-        if line.startswith(" ") and ":" not in line:
-            line = re.sub(r"(?P<item>\w+)", r"\g<item>: \g<item>", line)
         
         # patterns が[]で囲われてない場合は囲う
         if line.startswith(" "):
@@ -222,7 +229,7 @@ def verify_comply_rules(filename: str, rules: list, settings: dict, categories: 
     pattern_list = []
     for element in rules:
         if element.get("kind") == "NAME":
-            pattern_list.append(r".+")
+            pattern_list.append(r".*")
             
         elif element.get("kind") == "DATE":
             date_pattern = element.get("format")\
@@ -232,16 +239,19 @@ def verify_comply_rules(filename: str, rules: list, settings: dict, categories: 
 
         elif element.get("kind") == "VERSION":
             ver_pattern = element.get("format").replace("n", r"\d")
-            pattern_list.append(ver_pattern)
+            pattern_list.append(element.get("prefix") + ver_pattern)
             
         else:
-            group, category = element.get("kind").split(texts.kind_separator)
-
-            target_cat = categories.get(group).get(category)
-            cat_pattern = "|".join(target_cat)
-            pattern_list.append(f"({cat_pattern})")
-    
+            if "_EXCLAMATION" in element.get("requirement"):
+                pattern_list.append(r".*")
+            else:
+                items = list(element.get("items").keys())
+                cat_pattern = "|".join(items)
+                pattern_list.append(f"({cat_pattern})")
+        
     suffix_pattern = r"\.\w+"
-    pattern = settings.get("delimiter").join(pattern_list) + suffix_pattern
+    re_delimiter = settings.get("delimiter")+"?"
+    pattern = re_delimiter.join(pattern_list) + suffix_pattern
+
 
     return bool(re.fullmatch(pattern, filename))

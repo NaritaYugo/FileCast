@@ -250,8 +250,7 @@ class MainWindow(QMainWindow):
                 self._file_table.setItem(row, 0, item_original)
 
                 new_file  = results.get(original_name).get("new_file")
-                has_error = results.get(original_name).get("has_error")
-                has_warn  = results.get(original_name).get("has_warn")
+                is_warning  = results.get(original_name).get("is_warning")
 
                 item_new_name = QTableWidgetItem(new_file)
                 item_new_name.setFlags(item_new_name.flags() | Qt.ItemIsEditable)
@@ -262,10 +261,7 @@ class MainWindow(QMainWindow):
                 item_status = QTableWidgetItem("Ready")
                 item_status.setBackground(COLORS["ready"])
 
-                if has_error:
-                    item_status.setText("Error")
-                    item_status.setBackground(COLORS["error"])
-                elif has_warn:
+                if is_warning:
                     item_status.setText("Warning")
                     item_status.setBackground(COLORS["warn"])
 
@@ -299,7 +295,7 @@ class MainWindow(QMainWindow):
                     item_status.setText("Ready")
                     item_status.setBackground(COLORS["ready"]) 
                 else:
-                    item_status.setText("Edited")
+                    item_status.setText("Warning")
                     item_status.setBackground(COLORS["warn"])
                     
             finally:

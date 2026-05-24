@@ -56,7 +56,7 @@ class RuleStyle:
             4px; 
         }
         QListWidget::item {
-            background-color: #007ACC; 
+            background-color: #555; 
             color: white; 
             margin: 2px;
             padding: 4px 4px; 

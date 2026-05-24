@@ -242,10 +242,6 @@ class RuleBuilderDialog(QDialog):
             block = PaletteBlock(kind)
             block.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             block.setSizeHint(QSize(100, 32))
-            if kind in DEFALT_BLOCKS:
-                block.setBackground(Qt.GlobalColor.darkBlue)
-            else:
-                block.setBackground(Qt.GlobalColor.darkGreen)
             self._palette_list.addItem(block)
 
     def _spread_rules(self):
@@ -267,10 +263,10 @@ class RuleBuilderDialog(QDialog):
         for element in self._rules_tmp_blocks:
             kind = element.get("kind", "")
 
-            if not kind in self._categories.keys() or kind in DEFALT_BLOCKS:
+            if kind not in self._categories and kind not in DEFALT_BLOCKS:
                 continue
 
-            if kind in self._categories.keys():
+            if kind in self._categories:
                 category = self._categories.get(kind, {})
                 requirement = category.pop("REQ", "")
                 if "_" in requirement:
@@ -293,8 +289,6 @@ class RuleBuilderDialog(QDialog):
         else:
             category = self._categories.get(kind, {})
             requirement = category.pop("REQ", "")
-            if "_" in requirement:
-                requirement = ""
 
             element = {
                 "kind": kind,
@@ -355,10 +349,13 @@ class RuleBuilderDialog(QDialog):
             self.detail_form_layout.addRow("数字の形式:", self.ver_format_edit)
             
         else:
-            if element.get("requirement"):
-                req_text = f"要件: {", ".join(element.get("requirement"))} が存在する場合のみ"
-            else:
+            requirement = element.get("requirement")
+            if not requirement or "_ASTERISK" in requirement:
                 req_text = "要件: なし (常に適用)"
+            elif "_EXCLAMATION" in requirement:
+                req_text = "要件: 以下のいずれかのパターンが存在する場合のみ"
+            else:
+                req_text = f"要件: {", ".join(element.get("requirement"))} が存在する場合のみ"
             self.detail_form_layout.addRow(QLabel(req_text))
 
             for item, patterns in element.get("items").items():
@@ -379,19 +376,18 @@ class RuleBuilderDialog(QDialog):
                 self._block_list.setCurrentRow(selected_row)
                 
             self._call_make_sample()
-
             self._rules_tmp_blocks = []
 
     def _on_settings_btn_clicked(self):
         self._rules_tmp_blocks = self._get_current_rules()
         selected_row = self._block_list.currentRow()
         if self.settings_dialog.exec() == QDialog.Accepted:
-            self._sync_tmp_rules()
-            self._call_make_sample()
+            self._spread_tmp_rules()
 
             if selected_row >= 0 and selected_row < self._block_list.count():
                 self._block_list.setCurrentRow(selected_row)
 
+            self._call_make_sample()
             self._rules_tmp_blocks = []
 
     def _adjust_sample_font_size(self, text):
