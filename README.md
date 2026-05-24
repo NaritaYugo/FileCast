@@ -6,7 +6,7 @@
 
 <img width="886" height="498" alt="image" src="https://github.com/user-attachments/assets/be0c8aed-d7c4-4aaf-ab5d-13e76dfdb8a3" />
 
-[ダウンロード](作成中)
+[ダウンロード]([作成中](https://github.com/NaritaYugo/FileCast/releases/tag/v1.0.0))
 
 ## 概要
 
