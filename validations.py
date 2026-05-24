@@ -1,5 +1,6 @@
 import datetime
 import re
+import yaml
 
 import fileLoadingUtils
 import texts
@@ -11,61 +12,80 @@ def check_categories(categories: dict) -> bool:
     if categories is None:
         return True
     if not isinstance(categories, dict):
-        raise TypeError
+        raise TypeError("辞書形式ではありません")
 
-    for group_name, group_dict in categories.items():
-        if not isinstance(group_dict, dict):
-            raise KeyError(f"グループ「{group_name}」が辞書形式ではありません")
-        if not any(key != "REQ" for key in group_dict):
-            raise KeyError(f"グループ「{group_name}」内にカテゴリがありません")
-        for cat_name, cat_list in group_dict.items():
-            if not isinstance(cat_list, list):
-                raise KeyError(f"カテゴリ「{group_name}-{cat_name}」がリスト形式ではありません")
-            if re.search(FORBIDDEN_CHARS, "".join(cat_list)):
-                raise ValueError(f"カテゴリ「{group_name}-{cat_name}」にファイル名として使用できない文字が含まれています")
+    for category, items in categories.items():
+        if not isinstance(items, dict):
+            raise TypeError(f"カテゴリ「{category}」が辞書形式ではありません")
+        
+        if not any(key != "REQ" for key in category):
+            raise KeyError(f"カテゴリ「{category}」内にカテゴリがありません")
+        
+        for item, patterns in items.items():
+            if not isinstance(patterns, list):
+                raise TypeError(f"カテゴリ「{category}」内のアイテム「{item}」がリスト形式ではありません")
+                
+            if re.search(FORBIDDEN_CHARS, "".join(item)):
+                raise ValueError(f"カテゴリ「{category}」内のアイテム「{item}」にファイル名として使用できない文字が含まれています")
     return True
 
 
-def convert_to_valid_categories(categories: dict) -> dict:
-    """ユーザーの入力に少々ミスがあっても修正し、yamlに書き込む形式に直す"""
+def read_as_yaml_relaxed(categories_text: str) -> dict:
+    """ユーザーの入力に少々ミスがあっても修正し、yamlとして読み込んで返す"""
+
+    """categoriesの形式メモ
+    category:
+        item: [pattern, pattern]
+        item: [pattern, pattern, pattern]
+    category:
+        item: [pattern]
+    """
+    lines = categories_text.split("\n")
+    cleand_lines = []
+
+    for i, line in enumerate(lines):
+        if re.search(FORBIDDEN_CHARS, "".join(line).replace(":", "")):
+            raise ValueError(f"{i}行目: ファイル名として使用できない文字が含まれています")
+        
+        # 全角を半角に変更
+        line = line.replace("：", ":").replace("，",",").replace("、",",").replace("　"," ")
+        
+        # スペースを入れ忘れている場合のためにコロンの後のスペースの数を増やしておく
+        line = line.replace(":", ": ")
+    
+        # itemだけの場合、item: itemにする
+        if line.startswith(" ") and ":" not in line:
+            line = re.sub(r"(?P<item>\w+)", r"\g<item>: \g<item>", line)
+        
+        # patterns が[]で囲われてない場合は囲う
+        if line.startswith(" "):
+            line = re.sub(r"(?<=:) +(?P<patterns>[^\[\]]+)", r" [\g<patterns>]", line)
+        
+        cleand_lines.append(line)
+
+    cleand_categories_text = "\n".join(cleand_lines)
+
+    try:
+        categories = yaml.safe_load(cleand_categories_text)
+    except Exception as e:
+        raise Exception(f"yamlとしてパースできません: {e}")
+
     if categories is None:
         return True
     
     if not isinstance(categories, dict):
         raise TypeError(f"辞書形式ではありません。")
 
-    for i, (group_name, group_dict) in enumerate(categories.items()):
-        if isinstance(group_dict, dict):
-            pass
-
-        # コロンはあって、スペースが抜けているだけの場合は修正する
-        elif isinstance(group_dict, str) and group_dict.count(":") == 1:
-            categories_list = list(categories)
-            categories_list[i] = (group_dict.split())
-            categories = dict(categories_list)
-        
-        else:
-            raise TypeError(f"グループ「{group_name}」が辞書形式ではありません。")
-
-    # 更新されたcategoriesを再度回して、中の確認
-    for group_name, group_dict in categories.items():
-        if not any(key != "REQ" for key in group_dict):
-            raise KeyError(f"グループ「{group_name}」内にカテゴリがありません")
+    for i, (category, items) in enumerate(categories.items()):
+        if not isinstance(items, dict):
+            raise TypeError(f"カテゴリ「{category}」が辞書形式ではありません。")
         
         # 改行位置を調節して書き込むため、listを継承したFlowStyleList型にする
-        for cat_name, cat_list in group_dict.items():
-            if isinstance(cat_list, list):
-                categories[group_name][cat_name] = fileLoadingUtils.FlowStyleList(cat_list)
-                if re.search(FORBIDDEN_CHARS, "".join(cat_list)):
-                    raise ValueError(f"カテゴリ「{group_name}-{cat_name}」にファイル名として使用できない文字が含まれています")
-                
-            elif isinstance(cat_list, str):
-                categories[group_name][cat_name] = fileLoadingUtils.FlowStyleList(
-                    cat_list.replace(" ","").split(","))
-                if re.search(FORBIDDEN_CHARS, cat_list):
-                    raise ValueError(f"カテゴリ「{group_name}-{cat_name}」にファイル名として使用できない文字が含まれています")
+        for item, patterns in items.items():
+            if isinstance(patterns, list):
+                categories[category][item] = fileLoadingUtils.FlowStyleList(patterns)
             else:
-                raise TypeError(f"{group_name}-{cat_name}: カンマ区切り文字列またはリストとして記述してください")
+                raise TypeError(f"カテゴリ「{category}」内のアイテム「{item}」の形式が正しくありません")
 
     return categories
 
@@ -97,10 +117,10 @@ def check_rules(rules: list, categories: dict) -> bool:
                 raise ValueError("VERSION: prefixにファイル名として使用できない文字が含まれています")
             
         else:
-            group, category = element.get("kind").split(texts.kind_separator)
+            category = element.get("kind")
 
-            if category not in categories.get(group):
-                raise KeyError(f"キー「{category}」がカテゴリに存在しません")
+            if category not in categories:
+                raise KeyError(f"カテゴリ「{category}」はカテゴリ設定ファイル内に存在しません")
             
             if "_" in element.get("requirement"):
                 raise KeyError("内部エラー: '_' がそのまま保存されています")
@@ -176,11 +196,8 @@ def make_sample(rules: list, settings: dict, selectedIndex: int) -> str:
             elements.append(element.get("prefix", "") + ver_num)
             
         else:
-            if texts.kind_separator in kind:
-                category = kind.split(texts.kind_separator)[1]
-            else:
-                category = kind
-            elements.append(category)
+            items = element.get("items", "")
+            elements.append(next(iter(items)))
 
     if selectedIndex >= 0:
         # 現在選択されているブロックに対応するテキストの色を変える

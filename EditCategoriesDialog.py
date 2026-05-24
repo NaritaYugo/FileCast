@@ -37,7 +37,7 @@ class EditCategoriesDialog(QDialog):
     def showEvent(self, arg__1):
         super().showEvent(arg__1)
         _, _category_plane_text = fileLoadingUtils.load_categories(self)
-        # [] の削除と、グループごとに空行を挟む
+        # [] を削除し、グループごとに空行を挟んで表示
         cleaned_text = _category_plane_text.replace("[", "").replace("]", "")
         display_text = re.sub(r"\n(?=\S+:)", r"\n\n", cleaned_text)
         self._edit_categories.setPlainText(display_text)
@@ -76,17 +76,14 @@ class EditCategoriesDialog(QDialog):
         """エディタの内容をバリデーションした上でYAMLファイルへ保存する"""
         cat_text = self._edit_categories.toPlainText()
         
+        # 一度yamlとして読み込んで辞書にする
         try:
-            cat_dict = yaml.safe_load(cat_text)
-            valid_cat_dict = validations.convert_to_valid_categories(cat_dict)
-        except yaml.scanner.ScannerError:
-            QMessageBox.critical(self, "エラー", "yaml形式が正しくありません。\
-                \nインデントが正しいか、コロンの後にスペースが入っているかを確認してください。") 
-            return
+            valid_cat_dict = validations.read_as_yaml_relaxed(cat_text)
         except Exception as e:
             QMessageBox.critical(self, "エラー", f"{e}")  
             return
-        
+            
+        # 形式を指定して書き込む
         yaml.add_representer(fileLoadingUtils.FlowStyleList, fileLoadingUtils.flow_style_list_representer)
 
         try:

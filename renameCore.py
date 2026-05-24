@@ -111,16 +111,17 @@ def _extract_categories(ctx: RenameContext):
     # requirementに関わらずすべて抜き出す
     org_cat = {}
     for i in cat_pos:
-        target_cat = ctx.rules[i].get("target")
-        target_cat_escaped = [re.escape(t) for t in target_cat]
-        re_cat = "|".join(target_cat_escaped)
-        re_cat_unit = _build_word_search_pattern(re_cat)
+        category = ctx.rules[i].get("kind")
+        org_cat[category] = []
+        for item, patterns in ctx.rules[i].get("items").items():
+            patterns_cat_escaped = [re.escape(t) for t in patterns]
+            re_cat = "|".join(patterns_cat_escaped)
+            re_cat_unit = _build_word_search_pattern(re_cat)
 
-        match = re.search(re_cat_unit, ctx.remains)
-        if match:
-            category = ctx.rules[i].get("kind").split(texts.kind_separator)[1]
-            org_cat[category] = match.group(0)
-            ctx.remains = ctx.remains[:match.start()] + ctx.remains[match.end():]
+            match = re.search(re_cat_unit, ctx.remains)
+            if match:
+                org_cat[category].append(item)
+                ctx.remains = ctx.remains[:match.start()] + ctx.remains[match.end():]
 
     # requirementを満たすものだけ置き換え
     for i in cat_pos:
@@ -134,11 +135,14 @@ def _extract_categories(ctx: RenameContext):
                 elif req in ctx.org_file:
                     is_valid_cat = True
             
-        category = ctx.rules[i].get("kind").split(texts.kind_separator)[1]
+        category = ctx.rules[i].get("kind")
         if is_valid_cat:
-            try:
-                ctx.extracts[i] = org_cat[category]
-            except KeyError:
+            if len(org_cat[category]) == 1:
+                ctx.extracts[i] = org_cat[category][0]
+            elif len(org_cat[category]) > 1:
+                ctx.extracts[i] = f"Ambig[{"_".join(org_cat[category])}]"
+                ctx.has_warn = True
+            else:
                 ctx.extracts[i] = f"No[{category}]"
                 ctx.has_error = True
         else:

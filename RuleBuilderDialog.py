@@ -11,9 +11,14 @@ import EditCategoriesDialog
 import EditSettingsDialog
 import fileLoadingUtils
 import styles
-import texts
 import validations
 
+
+DEFALT_BLOCKS = {
+    "DATE": {"kind": "DATE", "format": "YYYY-MM-DD"},
+    "NAME": {"kind": "NAME", "remove_internal_delimiter": True},
+    "VERSION": {"kind": "VERSION", "prefix": "ver_", "format": "n.n.nnn"}
+}
 
 class PaletteBlock(QListWidgetItem):
     """素材パレット専用のアイテムクラス"""
@@ -98,11 +103,7 @@ class RuleBlock(QListWidgetItem):
     def __init__(self, element):
         super().__init__("")
         self.element = element
-        
-        kind = element.get("kind", "")
-        # kind が "group{texts.kind_separator}category" の形式なら "group" を、そうでないなら kind を表示名とする
-        self.display_text = kind.split(texts.kind_separator)[0] if texts.kind_separator in kind else kind
-        self.kind = self.display_text
+        self.kind = element.get("kind", "")
 
 class RuleBuilderDialog(QDialog):
     def __init__(self, parent=None):
@@ -230,66 +231,22 @@ class RuleBuilderDialog(QDialog):
         main_layout.addLayout(bottom_layout)
 
     def _setup_palette(self):
-        """素材パレットの表示を更新 (グループ名のみを表示)"""
+        """素材パレットの表示を更新"""
         self._palette_list.clear()
         if not self._categories:
             return
-        
-        kinds = ["VERSION", "DATE", "NAME"]
-        kinds.extend(sorted(self._categories.keys()))
-            
+
+        kinds = list(DEFALT_BLOCKS.keys()) + sorted(list(self._categories.keys()))
+
         for kind in kinds:
             block = PaletteBlock(kind)
             block.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             block.setSizeHint(QSize(100, 32))
-            if kind in ("DATE", "NAME", "VERSION"):
+            if kind in DEFALT_BLOCKS:
                 block.setBackground(Qt.GlobalColor.darkBlue)
             else:
                 block.setBackground(Qt.GlobalColor.darkGreen)
             self._palette_list.addItem(block)
-
-    def _sync_tmp_rules(self):
-        """最新のカテゴリ定義(self._categories)を元に、一時退避中のブロック群を精査・更新する"""
-
-        synced_blocks = []
-        for element in self._rules_tmp_blocks:
-            kind = element.get("kind", "")
-            
-            if texts.kind_separator in kind:
-                group_name, current_target = kind.split(texts.kind_separator, 1)
-                
-                # グループ自体が消滅していたら、このブロックは破棄
-                if group_name not in self._categories:
-                    continue
-                
-                group = self._categories[group_name]
-                categories = [c for c in group.keys() if c != "REQ"]
-                
-                if current_target not in categories:
-                    if categories:
-                        # 他に利用可能なターゲットがあれば、先頭のものに切り替える
-                        current_target = categories[0]
-                    else:
-                        continue
-                
-                # 中身をデータ同期
-                element["kind"] = group_name + texts.kind_separator + current_target
-                
-                requirement_str = group.get("REQ", "_")
-                if requirement_str == "_":
-                    element["requirement"] = []
-                else: 
-                    element["requirement"] = [r.strip() for r in str(requirement_str).split(",") if r.strip()]
-                
-                target_elements = group.get(current_target, "")
-                if isinstance(target_elements, list):
-                    element["target"] = target_elements
-                else:
-                    element["target"] = [t.strip() for t in str(target_elements).split(",") if t.strip()]
-            
-            synced_blocks.append(element)
-            
-        self._rules_tmp_blocks = synced_blocks
 
     def _spread_rules(self):
         """rules.yamlから現在の配置ルールをロードして画面に並べる"""
@@ -297,14 +254,6 @@ class RuleBuilderDialog(QDialog):
 
         self.rules = fileLoadingUtils.load_rules(self)
         for element in self.rules:
-            kind = element.get("kind", "")
-            
-            # ユーザー定義カテゴリの場合、UI用の補助プロパティを復元する
-            if texts.kind_separator in kind:
-                group_name, target = kind.split(texts.kind_separator, 1)
-                element["_group"] = group_name
-                element["_selected_target"] = target
-            
             # Blockを生成
             block = RuleBlock(element)
             self._block_list.addItem(block)
@@ -312,53 +261,46 @@ class RuleBuilderDialog(QDialog):
         self._refresh_list_widgets()
 
     def _spread_tmp_rules(self):
-        """カテゴリファイルが変わった時に現在配置されているブロックをチェック・同期する"""
+        """カテゴリに更新があった場合にブロックを更新して置き直す"""
         self._block_list.clear()
-
+        
         for element in self._rules_tmp_blocks:
             kind = element.get("kind", "")
-            
-            # ユーザー定義カテゴリの場合、UI用の補助プロパティを復元する
-            if texts.kind_separator in kind:
-                group_name, target = kind.split(texts.kind_separator, 1)
-                element["_group"] = group_name
-                element["_selected_target"] = target
-            
-            # Blockを生成
+
+            if not kind in self._categories.keys() or kind in DEFALT_BLOCKS:
+                continue
+
+            if kind in self._categories.keys():
+                category = self._categories.get(kind, {})
+                requirement = category.pop("REQ", "")
+                if "_" in requirement:
+                    requirement = ""
+
+                element = {
+                    "kind": kind,
+                    "requirement": requirement,
+                    "items": category
+                }
+                
             block = RuleBlock(element)
             self._block_list.addItem(block)
 
         self._refresh_list_widgets()
 
     def _on_block_dropped(self, kind, row):
-        default_elements = {
-            "DATE": {"kind": "DATE", "format": "YYYY-MM-DD"},
-            "NAME": {"kind": "NAME", "remove_internal_delimiter": True},
-            "VERSION": {"kind": "VERSION", "prefix": "ver_", "format": "n.n.nnn"}
-        }
-
-        if kind in default_elements:
-            element = default_elements[kind].copy()
+        if kind in DEFALT_BLOCKS:
+            element = DEFALT_BLOCKS[kind].copy()
         else:
-            group = self._categories.get(kind, {})
-            categories = [c for c in group.keys() if c != "REQ"]
-            
-            # デフォルトで一番上のカテゴリを選択状態にする
-            default_target = categories[0] if categories else ""
-            
-            element = {
-                "kind": kind + texts.kind_separator + default_target,
-                "_group": kind,
-                "_selected_target": default_target
-            }
-            
-            requirement_str = group.get("REQ", "_")
-            if "_" in requirement_str:
-                element["requirement"] = []
-            else:
-                element["requirement"] = requirement_str
+            category = self._categories.get(kind, {})
+            requirement = category.pop("REQ", "")
+            if "_" in requirement:
+                requirement = ""
 
-            element["target"] = group.get(default_target, "")
+            element = {
+                "kind": kind,
+                "requirement": requirement,
+                "items": category
+            }
 
         block = RuleBlock(element)
         block.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -370,10 +312,9 @@ class RuleBuilderDialog(QDialog):
 
     def _on_block_selected(self):
         """現在のルールリストでブロックが選択された際、詳細設定フォームを切り替える"""
-        while self.detail_form_layout.count():
-            widget_item = self.detail_form_layout.takeAt(0)
-            if widget_item.widget(): 
-                widget_item.widget().deleteLater()
+        # 既存の行をすべてクリア
+        while self.detail_form_layout.rowCount() > 0:
+            self.detail_form_layout.removeRow(0)
 
         selected_blocks = self._block_list.selectedItems()
         if not selected_blocks:
@@ -413,54 +354,15 @@ class RuleBuilderDialog(QDialog):
             self.ver_format_edit.textChanged.connect(self._call_make_sample)
             self.detail_form_layout.addRow("数字の形式:", self.ver_format_edit)
             
-        elif block.kind in self._categories:
-            group_name = block.kind
-            group = self._categories.get(group_name, {})
-            
-            categories = [c for c in group.keys() if c != "REQ"]
-            
-            self.cat_combo = QComboBox()
-            for category in categories:
-                self.cat_combo.addItem(category, category)
-                
-            current_target = element.get("_selected_target", "")
-            
-            if not current_target and categories:
-                current_target = categories[0]
-                self._on_target_changed(element, group, current_target)
-                
-            idx = self.cat_combo.findData(current_target)
-            if idx >= 0:
-                self.cat_combo.setCurrentIndex(idx)
-            elif categories:
-                self.cat_combo.setCurrentIndex(0)
-                
-            self.cat_combo.currentIndexChanged.connect(lambda idx: self._on_target_changed(element, group, self.cat_combo.itemData(idx)))
-            self.detail_form_layout.addRow("抽出ターゲットのカテゴリ:", self.cat_combo)
-            
-            requirement_str = group.get("REQ", "_")
-            if requirement_str != "_":
-                display_req = f"文字列 {requirement_str} が存在する場合のみ"
-            else: 
-                display_req = "なし (常に適用)"
-
-            req_label = QLabel(f"適用要件: {display_req}")
-            self.detail_form_layout.addRow(req_label)
-
-    def _on_target_changed(self, element, group, target):
-        """詳細画面でターゲットが変更された時に、一時領域の選択状態を更新してサンプルを再描画する"""
-        element["_selected_target"] = target
-        element["kind"] = element.get('_group', '') + texts.kind_separator + target
-        
-        requirement_str = group.get("REQ", "_")
-        if "_" in requirement_str:
-            element["requirement"] = []
         else:
-            element["requirement"] = requirement_str
+            if element.get("requirement"):
+                req_text = f"要件: {", ".join(element.get("requirement"))} が存在する場合のみ"
+            else:
+                req_text = "要件: なし (常に適用)"
+            self.detail_form_layout.addRow(QLabel(req_text))
 
-        element["target"] = group.get(target, "")
-            
-        self._call_make_sample()
+            for item, patterns in element.get("items").items():
+                self.detail_form_layout.addRow(QLabel(f"・{item} <- {", ".join(patterns)}"))
 
     def _on_category_btn_clicked(self):
         # 現在の情報を保存
@@ -470,7 +372,6 @@ class RuleBuilderDialog(QDialog):
         # 戻ってきたときに同期、復元
         if self.categories_dialog.exec() == QDialog.Accepted:
             self._categories, _ = fileLoadingUtils.load_categories(self)
-            self._sync_tmp_rules()
             self._spread_tmp_rules()
             self._setup_palette()
 
@@ -578,20 +479,7 @@ class RuleBuilderDialog(QDialog):
         rules_blocks = []
         for i in range(self._block_list.count()):
             element = self._block_list.item(i).element
-            
-            if "_group" in element:
-                group_name = element["_group"]
-                target = element.get("_selected_target", "")
-                
-                # ユニークなkind名にするため、group_nameとtargetを結合する
-                packed_elem = {
-                    "kind": group_name + texts.kind_separator + target,
-                    "requirement": element.get("requirement", []),
-                    "target": element.get("target", [])
-                }
-                rules_blocks.append(packed_elem)
-            else:
-                rules_blocks.append(element)
+            rules_blocks.append(element)
         return rules_blocks
 
     def save_rules(self):
