@@ -4,7 +4,7 @@ import yaml
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QLabel, QDialog, QFileDialog, QTableWidget, QTableWidgetItem,
                                QHeaderView, QMessageBox, QStackedLayout)
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QColor
 
 import fileLoadingUtils
@@ -119,9 +119,9 @@ class MainWindow(QMainWindow):
         self._file_table.folder_dropped.connect(self._process_directory)
         self._file_table.setColumnCount(3)
         self._file_table.setHorizontalHeaderLabels(["元のファイル名", "変換後のプレビュー(ダブルクリックで編集)", "ステータス"])
-        self._file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self._file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self._file_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self._file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+        self._file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+        self._file_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self._file_table.cellChanged.connect(self._on_table_cell_changed)
         self.stack.addWidget(self._file_table)
 
@@ -143,6 +143,18 @@ class MainWindow(QMainWindow):
         self._execute_btn.clicked.connect(self.execute_rename)
         self._execute_btn.setEnabled(False)
         bottom_layout.addWidget(self._execute_btn, 1)
+
+    def _set_default_column_widths(self):
+        """表の初期比率を設定"""
+        if self.stack.currentIndex() != 1 or self._file_table.viewport().width() <= 0:
+            return
+
+        default_width_ratio = [5, 8, 1] # リネーム後のほうがNo[VERSION]などで長くなる
+        total_width = self._file_table.viewport().width()
+        
+        self._file_table.setColumnWidth(0, int(total_width * default_width_ratio[0] / sum(default_width_ratio)))
+        self._file_table.setColumnWidth(1, int(total_width * default_width_ratio[1] / sum(default_width_ratio)))
+        # 2列目はStretchで自動計算
 
     def _ensure_yamls_exsist(self):
         """yamlファイルが無ければ新規作成する"""
@@ -195,6 +207,9 @@ class MainWindow(QMainWindow):
 
             self.stack.setCurrentIndex(1 if self._file_table.rowCount() > 0 else 0)
         
+            if self.stack.currentIndex() == 1:
+                QTimer.singleShot(0, self._set_default_column_widths)
+
         finally:
             self._file_table.blockSignals(False)
 
@@ -258,7 +273,9 @@ class MainWindow(QMainWindow):
                 self._file_table.setItem(row, 2, item_status)
 
             self.stack.setCurrentIndex(1 if self._file_table.rowCount() > 0 else 0)
-        
+            
+            if self.stack.currentIndex() == 1:
+                    QTimer.singleShot(0, self._set_default_column_widths)
         finally:
             self._file_table.blockSignals(False)
 

@@ -5,6 +5,8 @@ import fileLoadingUtils
 import texts
 
 
+FORBIDDEN_CHARS = r'[\\/:*?"<>|]'
+
 def check_categories(categories: dict) -> bool:
     if categories is None:
         return True
@@ -19,10 +21,13 @@ def check_categories(categories: dict) -> bool:
         for cat_name, cat_list in group_dict.items():
             if not isinstance(cat_list, list):
                 raise KeyError(f"カテゴリ「{group_name}-{cat_name}」がリスト形式ではありません")
+            if re.search(FORBIDDEN_CHARS, "".join(cat_list)):
+                raise ValueError(f"カテゴリ「{group_name}-{cat_name}」にファイル名として使用できない文字が含まれています")
     return True
 
 
 def convert_to_valid_categories(categories: dict) -> dict:
+    """ユーザーの入力に少々ミスがあっても修正し、yamlに書き込む形式に直す"""
     if categories is None:
         return True
     
@@ -51,13 +56,19 @@ def convert_to_valid_categories(categories: dict) -> dict:
         for cat_name, cat_list in group_dict.items():
             if isinstance(cat_list, list):
                 categories[group_name][cat_name] = fileLoadingUtils.FlowStyleList(cat_list)
+                if re.search(FORBIDDEN_CHARS, "".join(cat_list)):
+                    raise ValueError(f"カテゴリ「{group_name}-{cat_name}」にファイル名として使用できない文字が含まれています")
+                
             elif isinstance(cat_list, str):
                 categories[group_name][cat_name] = fileLoadingUtils.FlowStyleList(
                     cat_list.replace(" ","").split(","))
+                if re.search(FORBIDDEN_CHARS, cat_list):
+                    raise ValueError(f"カテゴリ「{group_name}-{cat_name}」にファイル名として使用できない文字が含まれています")
             else:
                 raise TypeError(f"{group_name}-{cat_name}: カンマ区切り文字列またはリストとして記述してください")
 
     return categories
+
 
 def check_rules(rules: list, categories: dict) -> bool:
     # ルール内にあるカテゴリがユーザー定義のカテゴリにあるか確認するため、categoryも渡す
@@ -70,19 +81,30 @@ def check_rules(rules: list, categories: dict) -> bool:
             num_Y = element.get("format").count("Y")
             num_M = element.get("format").count("M")
             num_D = element.get("format").count("D")
-            if num_Y not in (2, 4) or not any(x == 2 for x in (num_M, num_D)):
+            if num_Y not in (2, 4) or num_M != 2 or num_D != 2:
                 raise KeyError("DATE: 文字「Y」「M」「D」の個数が正しくありません")
             
+            elif re.search(FORBIDDEN_CHARS, element.get("format")):
+                    raise ValueError(f"DATE: 形式にファイル名として使用できない文字が含まれています")
+            
         elif element.get("kind") == "VERSION":
-            if element.get("format").replace("n", "").replace(".", ""):
-                raise KeyError("VERSION: バージョン形式に使える文字は「n」「.」のみです")
+            if re.search(FORBIDDEN_CHARS, element.get("format")):
+                raise ValueError("VERSION: バージョン形式にファイル名として使用できない文字が含まれています")
+            elif "n" not in element.get("format"):
+                raise ValueError("VERSION: バージョン形式には「n」を1字以上含めてください")
+            
+            elif re.search(FORBIDDEN_CHARS, element.get("prefix")):
+                raise ValueError("VERSION: prefixにファイル名として使用できない文字が含まれています")
             
         else:
             group, category = element.get("kind").split(texts.kind_separator)
 
             if category not in categories.get(group):
                 raise KeyError(f"キー「{category}」がカテゴリに存在しません")
-
+            
+            if "_" in element.get("requirement"):
+                raise KeyError("内部エラー: '_' がそのまま保存されています")
+            
     return True
 
 
@@ -95,6 +117,9 @@ def check_settings(settings: dict) -> bool:
     
     if "delimiter" not in settings:
         raise KeyError("delimiter")
+    
+    if re.search(FORBIDDEN_CHARS, settings.get("delimiter")):
+        raise ValueError("文字区切りにファイル名として使用できない文字が含まれています")
     
     sequence = settings.get("sequence", {})
     if sequence.get("style") not in ["all_overlaps", "always", "false"] or "format" not in sequence:

@@ -353,10 +353,12 @@ class RuleBuilderDialog(QDialog):
             }
             
             requirement_str = group.get("REQ", "_")
-            element["requirement"] = [] if requirement_str == "_" else [r.strip() for r in str(requirement_str).split(",") if r.strip()]
-            
-            target_elements = group.get(default_target, "")
-            element["target"] = target_elements if isinstance(target_elements, list) else [t.strip() for t in str(target_elements).split(",") if t.strip()]
+            if "_" in requirement_str:
+                element["requirement"] = []
+            else:
+                element["requirement"] = requirement_str
+
+            element["target"] = group.get(default_target, "")
 
         block = RuleBlock(element)
         block.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -451,16 +453,12 @@ class RuleBuilderDialog(QDialog):
         element["kind"] = element.get('_group', '') + texts.kind_separator + target
         
         requirement_str = group.get("REQ", "_")
-        if requirement_str == "_":
+        if "_" in requirement_str:
             element["requirement"] = []
         else:
-            element["requirement"] = [r.strip() for r in str(requirement_str).split(",") if r.strip()]
+            element["requirement"] = requirement_str
 
-        target_elements = group.get(target, "")
-        if isinstance(target_elements, list):
-            element["target"] = target_elements
-        else:
-            element["target"] = [i.strip() for i in str(target_elements).split(",") if i.strip()]
+        element["target"] = group.get(target, "")
             
         self._call_make_sample()
 

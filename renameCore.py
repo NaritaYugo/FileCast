@@ -9,7 +9,7 @@ from rapidfuzz.distance import Levenshtein
 import texts
 
 
-RE_DELIM = r"(_|-|\.| |^|$)"
+RE_DELIM = r"[_\.\-\s]"
 
 @dataclass
 class RenameContext:
@@ -21,6 +21,29 @@ class RenameContext:
     has_error: bool = False
     has_warn: bool = False
 
+
+def _build_word_search_pattern(word: str) -> str:
+    """パターンの左右に区切り(デリミタや、文字種の境目)をいれたパターンを生成"""
+    word_pattern = rf"(?i:{word})" # word 部分だけ ignorecase
+
+    re_boundary = "|".join([
+        rf"(?<={RE_DELIM})",            # デリミタ
+
+        r"(?<=[a-z])(?=[A-Z])",         # camelCase
+        r"(?<=[A-Z])(?=[A-Z][a-z])",    # PascalCase
+
+        r"(?<=[^0-9])(?=[0-9])",        # 数字以外から数字
+        r"(?<=[0-9])(?=[^0-9])",        # 数字から数字以外
+
+        r"(?<=[^a-zA-Z])(?=[a-zA-Z])",  # 英字以外から英字
+        r"(?<=[a-zA-Z])(?=[^a-zA-Z])",  # 英字から英字以外
+    ])
+
+    re_left = rf"(?:^|{re_boundary})"
+    re_right = rf"(?:$|{re_boundary})"
+
+    return f"{re_left}{word_pattern}{re_right}"
+
 def _extract_dates(ctx: RenameContext):
     date_pos = []
     for i, element in enumerate(ctx.rules):
@@ -31,6 +54,7 @@ def _extract_dates(ctx: RenameContext):
     month_pattern = r"(?P<month>0[1-9]|1[0-2])"
     day_pattern   = r"(?P<day>0[1-9]|[1-2][0-9]|3[0-1])"
 
+    # "YMD", "DMY", "MDY"のいずれか
     original_date_format = ctx.settings.get("original_date_format")
 
     re_date = ""
@@ -39,10 +63,15 @@ def _extract_dates(ctx: RenameContext):
         elif original_date_format[i] == "M": re_date += month_pattern
         elif original_date_format[i] == "D": re_date += day_pattern
         if i != 2:
-            re_date += RE_DELIM
+            re_date += RE_DELIM + "?"
+
+    # 日付の前のデリミタを必須とする
+    re_right = rf"(^|{RE_DELIM})"
+    # 日付の後は時分秒などが続いている場合があるため、そこも含めて検索
+    re_left = rf"(\d*($|{RE_DELIM}))"
     
     org_date = {}
-    match = re.search(re_date, ctx.remains)
+    match = re.search(re_right + re_date + re_left, ctx.remains)
     if match:
         if len(match.group("year")) == 2:
             org_date["year2"] = match.group("year")
@@ -54,8 +83,7 @@ def _extract_dates(ctx: RenameContext):
         org_date["day"] = match.group("day")
         ctx.remains = ctx.remains[:match.start()] + ctx.remains[match.end():]
 
-    if not date_pos: 
-        return
+    if not date_pos: return
     
     for i in date_pos:
         new_format = ctx.rules[i].get("format")
@@ -84,9 +112,11 @@ def _extract_categories(ctx: RenameContext):
     org_cat = {}
     for i in cat_pos:
         target_cat = ctx.rules[i].get("target")
-        re_cat = "|".join(target_cat)
+        target_cat_escaped = [re.escape(t) for t in target_cat]
+        re_cat = "|".join(target_cat_escaped)
+        re_cat_unit = _build_word_search_pattern(re_cat)
 
-        match = re.search(re_cat, ctx.remains)
+        match = re.search(re_cat_unit, ctx.remains)
         if match:
             category = ctx.rules[i].get("kind").split(texts.kind_separator)[1]
             org_cat[category] = match.group(0)
@@ -95,10 +125,11 @@ def _extract_categories(ctx: RenameContext):
     # requirementを満たすものだけ置き換え
     for i in cat_pos:
         requiremnts = ctx.rules[i].get("requirement")
-        is_valid_cat = False
+        # requirementsが空ならTrue
+        is_valid_cat = not bool(requiremnts)
         if requiremnts:
             for req in requiremnts:
-                if req.startswith(".") and req == Path(ctx.org_file).suffix:
+                if (req.startswith(".") and req == Path(ctx.org_file).suffix):
                     is_valid_cat = True
                 elif req in ctx.org_file:
                     is_valid_cat = True
@@ -144,6 +175,7 @@ def _extract_versions(ctx: RenameContext):
     # 接頭辞(v/ver/version)は任意
     # その後ろに「区切り文字（任意）＋数字（必須）」のセットが1回以上続く
     re_ver = rf"(?P<main>(v|ver|version)?({RE_DELIM}?\d+)+)"
+    re_ver_unit = _build_word_search_pattern(re_ver)
 
     delimiter = ctx.settings.get("delimiter")
     org_vers = []
@@ -151,7 +183,7 @@ def _extract_versions(ctx: RenameContext):
     # 破壊的変更を防ぐため、一時的な文字列でマッチングを行う
     current_remains = ctx.remains
     while True:
-        match = re.search(re_ver, current_remains, re.IGNORECASE)
+        match = re.search(re_ver_unit, current_remains)
         if not match: 
             break
         
@@ -176,7 +208,7 @@ def _extract_versions(ctx: RenameContext):
         
         # 新しいフォーマット（例: "n.n.nnn"）の 'n' を、抽出した数字で順番に置換していく
         new_format = ver_rules.get("format", "")
-        prefix = ver_rules.get("prefix", "")
+        prefix = re.escape(ver_rules.get("prefix", ""))
         
         new_ver = ""
         digit_idx = 0
@@ -211,13 +243,15 @@ def _extract_names(ctx: RenameContext):
     
     if not name_pos: return
 
-    delimiter = ctx.settings.get("delimiter")
+    raw_delimiter = ctx.settings.get("delimiter")
+    escaped_delimiter = re.escape(raw_delimiter)
     for i in name_pos:
         if ctx.rules[i].get("remove_internal_delimiter"):
             name = re.sub(RE_DELIM, "", ctx.remains)
         else:
             # 内部区切りを削除しない場合でも、delimiterが複数連続しているなら1つにする
-            name = re.sub(delimiter + r"{2,}", delimiter, ctx.remains)
+            # 検索にはescaped_delimiterを使い、置換結果にはraw_delimiterを使う
+            name = re.sub(escaped_delimiter + r"{2,}", lambda _: raw_delimiter, ctx.remains)
 
         if name:
             ctx.extracts[i] = name
@@ -254,13 +288,14 @@ def rename_all_files(org_file_list: List[str], rules: list, settings: dict) -> D
     match = re.search(r"n+", seq_format)
     seq_digit = len(match.group()) if match else 1
 
-    new_file_list_raw = []
     new_file_dict_sequenced = defaultdict(list)
+    file_counts = defaultdict(int)
     for org_file in org_file_list:
         suffix = Path(org_file).suffix
         new_file, has_error, has_warn = _rename_file(org_file, rules, settings)
 
-        other_conflicts = new_file_list_raw.count(new_file + suffix)
+        base_name_with_suffix = new_file + suffix
+        other_conflicts = file_counts[base_name_with_suffix]
 
         sequence = ""
         if seq_style == "always":
@@ -272,7 +307,7 @@ def rename_all_files(org_file_list: List[str], rules: list, settings: dict) -> D
                 sequence_val = str(other_conflicts).zfill(seq_digit)
                 sequence = seq_format.replace("n" * seq_digit, sequence_val)
         
-        new_file_list_raw.append(new_file + suffix)
+        file_counts[base_name_with_suffix] += 1
         new_file_dict_sequenced[org_file] = {
             "new_file": new_file + sequence + suffix, 
             "has_error":has_error, 

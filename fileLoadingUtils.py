@@ -38,6 +38,7 @@ def load_categories(parent) -> tuple[dict, str]:
     try:
         with open(categories_path, "r", encoding="utf-8") as f:
             raw_texts = f.read()
+        with open(categories_path, "r", encoding="utf-8") as f:
             categories = yaml.safe_load(f)
         validations.check_categories(categories)
         return categories, raw_texts
