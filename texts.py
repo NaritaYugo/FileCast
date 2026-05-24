@@ -7,14 +7,30 @@ DEFAULT_YAMLS={
 
     "categories": 
     {
-        "Fruits":
-            {"REQ": ["fruits"],
-            "sweet": ["apple", "grape"],
-            "sour": ["lemon"]},
-
-        "Game":
-            {"REQ": "_",
-            "VFX": ["effect", "vfx", "fx", "efx"]}
+        'Game': 
+        {
+            'REQ': ['_ASTERISK'], 
+            'bg': ['background', 'bg'], 
+            'chr': ['character', 'chr', 'char'], 
+            'rig': ['rig'], 
+            'ui': ['ui'], 
+            'shader': ['shader'], 
+            'music': ['music', 'audio', 'bgm', 'voice'], 
+            'movie': ['movie', 'anim', 'animation'], 
+            'enemy': ['boss', 'slime', 'enemy'], 
+            'material': ['mat', 'material']
+        }, 
+        'Enemy': {
+            'REQ': ['_EXCLAMATION'], 
+            'Boss': ['Boss'], 
+            'others': ['slime']
+        }, 
+        'Status': {
+            'REQ': ['_EXCLAMATION'], 
+            'tmp': ['temp', 'tmp'], 
+            'draft': ['draft'], 
+            'cache': ['cache']
+        }
     },
     
     "settings": 
