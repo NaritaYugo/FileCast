@@ -30,7 +30,7 @@ def load_categories(parent) -> tuple[dict, str]:
     categories_path = get_base_dir() / "categories.yaml"
 
     # ファイルが無ければ黙って新規作成
-    if not categories_path:
+    if not categories_path.exists():
         with open(categories_path, "w", encoding="utf-8") as f:
             yaml.dump(texts.DEFAULT_YAMLS["categories"], f, sort_keys=False, allow_unicode=True)
         return texts.DEFAULT_YAMLS["categories"], yaml.dump(texts.DEFAULT_YAMLS["categories"], sort_keys=False, allow_unicode=True)
@@ -62,7 +62,7 @@ def load_categories(parent) -> tuple[dict, str]:
 def load_settings(parent) -> dict:
     settings_path = get_base_dir() / "settings.yaml"
 
-    if not settings_path:
+    if not settings_path.exists():
         with open(settings_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(texts.DEFAULT_YAMLS["settings"], f, default_flow_style=False, allow_unicode=True)
         return texts.DEFAULT_YAMLS["settings"]
@@ -93,7 +93,7 @@ def load_rules(parent) -> dict:
     categories_path = get_base_dir() / "categories.yaml"
     rules_path = get_base_dir() / "rules.yaml"
 
-    if not rules_path or not categories_path:
+    if not rules_path.exists() or not categories_path.exists():
         if not rules_path:
             with open(rules_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(texts.DEFAULT_YAMLS["rules"], f, default_flow_style=False, allow_unicode=True)
@@ -130,7 +130,7 @@ def load_rules(parent) -> dict:
 def load_caches(parent) -> dict:
     caches_path = get_base_dir() / "caches.yaml"
 
-    if not caches_path:
+    if not caches_path.exists():
         with open(caches_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(texts.DEFAULT_YAMLS["caches"], f, default_flow_style=False, allow_unicode=True)
         return texts.DEFAULT_YAMLS["caches"]
